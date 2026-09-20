@@ -1,0 +1,142 @@
+{
+  "note": "Dynamic source fingerprints, not benchmark results; raw caches are untracked.",
+  "sources": [
+    {
+      "id": "openai-agents",
+      "url": "https://developers.openai.com/api/docs/guides/agents-sdk",
+      "retrievedAt": "2026-09-20",
+      "status": "http_403"
+    },
+    {
+      "id": "codex-security",
+      "url": "https://developers.openai.com/codex/security",
+      "retrievedAt": "2026-09-20",
+      "status": "http_403"
+    },
+    {
+      "id": "langgraph-overview",
+      "url": "https://docs.langchain.com/oss/javascript/langgraph/overview",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "45dc155a0feb90670ccf19e66e0f9747d271714f86646ec2182cac409c5605be"
+    },
+    {
+      "id": "langgraph-durable",
+      "url": "https://docs.langchain.com/oss/javascript/langgraph/durable-execution",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "3105dd9f9625cb7ce5c83c0401d2ad43e146ba7043b4cb5a7f7bf9f7bb1cdfe0"
+    },
+    {
+      "id": "autogen",
+      "url": "https://raw.githubusercontent.com/microsoft/autogen/main/README.md",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "5d300aa3304aeecf1a48f68ac76a1af255b8645d666b8aa154790cb30f1dbb94"
+    },
+    {
+      "id": "microsoft-framework",
+      "url": "https://learn.microsoft.com/en-us/agent-framework/overview/",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "e241ce1f177d9d39fbf185f3f29ee9a5d75aa5d43267866c4e264b2de6fb2aa9"
+    },
+    {
+      "id": "crewai-flows",
+      "url": "https://docs.crewai.com/en/concepts/flows",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "c370663b61485321314a51ed3a3c5a4af7a968a509da40b8dca24347b512c5fc"
+    },
+    {
+      "id": "openhands",
+      "url": "https://raw.githubusercontent.com/OpenHands/OpenHands/main/README.md",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "1b783460b1ec68ee4eb0a9de28b97b97cb2a128bcc524d2ab0340ba32143659c"
+    },
+    {
+      "id": "claude-sdk",
+      "url": "https://platform.claude.com/docs/en/agent-sdk/overview",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "fb039a9102687e0d8c6c9ae1fdd519b3181092311d2544f07e03b8e42e1d8f9c"
+    },
+    {
+      "id": "node-release",
+      "url": "https://raw.githubusercontent.com/nodejs/Release/main/schedule.json",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "1cf0432ceb9dfde7f1fd4cce43206519942cfdfad5a26039c2f4bb20fde8549c"
+    },
+    {
+      "id": "pgboss",
+      "url": "https://raw.githubusercontent.com/timgit/pg-boss/master/README.md",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "818132357086f9cf5f29896847e9a047959a216232d5aea7c3580b66fe840827"
+    },
+    {
+      "id": "drizzle",
+      "url": "https://orm.drizzle.team/docs/overview",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "6fd3e48a6a31d1c473d2067168cbaeb63a29fc5b42e6d2bf01e5f82ed3fdf800"
+    },
+    {
+      "id": "sse",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "5b0045e76485e67be588f396b064e84cc14e1c4655e662df2ed365b07f576c78"
+    },
+    {
+      "id": "gvisor",
+      "url": "https://gvisor.dev/docs/",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "f6bea3d321396bbccec41733e71de380536c16e50c226a2614baa23dc32b8275"
+    },
+    {
+      "id": "postgres-policy",
+      "url": "https://www.postgresql.org/support/versioning/",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "54c542f45154bc0479a5b7dee2dc0516c8ce3d8f1ae764b8f7dc23cea6e7a0c1"
+    },
+    {
+      "id": "figma-types",
+      "url": "https://raw.githubusercontent.com/figma/plugin-typings/master/plugin-api.d.ts",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "4421522173ca1e00fb40805e0d25a137782e1fea151d0e4002e335b5fde50d48"
+    },
+    {
+      "id": "figma-manifest",
+      "url": "https://developers.figma.com/docs/plugins/manifest/",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "a5c621ff455028752323d86253190948106ad18f904c1504ebcb8727e34390ee"
+    },
+    {
+      "id": "figma-plugin",
+      "url": "https://developers.figma.com/docs/plugins/quickstart/",
+      "retrievedAt": "2026-09-20",
+      "status": "not_retrieved"
+    },
+    {
+      "id": "apache-license",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "id": "apache-faq",
+      "url": "https://www.apache.org/foundation/license-faq.html",
+      "retrievedAt": "2026-09-20",
+      "status": "retrieved",
+      "sha256": "7bb8bb11e0b999d3a3790bec7951f6f2de640ebe2ce5f8fb58e234387acaa7f8"
+    }
+  ]
+}

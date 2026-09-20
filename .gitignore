@@ -4,6 +4,7 @@ coverage/
 .runtime/
 .data/
 .cache/
+design/public/
 *.tsbuildinfo
 *.log
 .env

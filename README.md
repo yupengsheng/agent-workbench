@@ -2,11 +2,11 @@
 
 可私有化部署的多 Agent 工作台。目标是统一管理 Agent、模型、用户与审计，通过 Think-Act-Observe 引擎执行文件、命令、网页和子任务操作。
 
-**当前阶段：仓库初始化。** 已提供可运行的 Vue Web 首页、Fastify 健康检查 API、共享类型、开发检查和产品设计文档。模型调用、任务引擎、数据库、身份认证、审批和审计尚未实现。
+**当前阶段：G0 方案与原型。** 已提供可运行的 Vue Web 首页、Fastify 健康检查 API、共享类型、Apache-2.0 许可证、技术选型/架构/阶段门槛文档、浏览器交互原型和 Figma 生成插件。模型调用、任务引擎、数据库、身份认证、审批和审计尚未实现。
 
 ## 快速开始
 
-环境：Node.js 22.12+（22 LTS）、npm 9+。在本仓库根目录执行：
+环境：Node.js 24 LTS、npm 9+。现有开发环境也可暂时使用 Node.js 22.12+；生产目标是 24 LTS。在本仓库根目录执行：
 
 ```bash
 npm ci
@@ -21,6 +21,8 @@ npm run dev
 
 ```bash
 npm run check       # 格式、类型和生产构建
+npm run figma:build # 生成 Figma 插件 dist/code.js
+npm run design:sync # 同步浏览器原型和架构图资产
 npm run format      # 格式化
 npm run build       # 构建共享包、API 和 Web
 npm run start --workspace @agent-workbench/api
@@ -72,4 +74,4 @@ agent-workbench/
 - Agent 配置、会话和每次 Run 分开建模；已启动 Run 使用不可变配置快照。
 - 服务端执行先落地，LOCAL Runner、MCP 和更多客户端后续扩展。
 - 不复制 Mao 源码；本仓库包含独立骨架和有出处的设计参考。
-- 当前所有 npm 包均为 private；项目开源许可证待所有者决定。
+- 所有 npm 包仍为 private；仓库采用 Apache-2.0，第三方依赖按各自许可证履行通知义务。

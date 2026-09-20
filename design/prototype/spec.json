@@ -1,0 +1,1284 @@
+{
+  "version": "0.2.0",
+  "start": "overview",
+  "name": "Agent Workbench",
+  "workspace": "研发工作空间",
+  "nav": [
+    {
+      "label": "工作概览",
+      "target": "overview",
+      "glyph": "◈"
+    },
+    {
+      "label": "Agent 中心",
+      "target": "agents",
+      "glyph": "◇"
+    },
+    {
+      "label": "任务运行",
+      "target": "running",
+      "glyph": "▤"
+    },
+    {
+      "label": "审批中心",
+      "target": "approval",
+      "glyph": "◎"
+    },
+    {
+      "label": "模型连接",
+      "target": "models",
+      "glyph": "⬡"
+    },
+    {
+      "label": "审计日志",
+      "target": "audit",
+      "glyph": "≡"
+    },
+    {
+      "label": "空间设置",
+      "target": "workspace",
+      "glyph": "⚙"
+    }
+  ],
+  "screens": [
+    {
+      "id": "overview",
+      "title": "工作概览",
+      "section": "overview",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "把复杂目标交给合适的 Agent，始终掌握执行过程。",
+      "actions": [
+        {
+          "label": "新建任务",
+          "target": "new-run",
+          "variant": "primary"
+        }
+      ],
+      "metrics": [
+        {
+          "label": "正在运行",
+          "value": "04",
+          "note": "2 个任务包含子 Agent"
+        },
+        {
+          "label": "待审批",
+          "value": "01",
+          "note": "需要你确认一个受控操作"
+        },
+        {
+          "label": "今日已完成",
+          "value": "18",
+          "note": "16 个通过结果验收"
+        },
+        {
+          "label": "今日 Token",
+          "value": "284k",
+          "note": "组织额度已使用 28%"
+        }
+      ],
+      "cards": [
+        {
+          "title": "仓库分析师",
+          "body": "代码结构、依赖风险与改进建议。",
+          "tag": "已发布 · v1.2",
+          "target": "new-run"
+        },
+        {
+          "title": "技术文档助手",
+          "body": "根据指定资料整理文档，保留来源。",
+          "tag": "已发布 · v1.0",
+          "target": "agent-editor"
+        }
+      ],
+      "table": {
+        "title": "最近任务",
+        "columns": ["任务", "Agent", "状态", "更新"],
+        "rows": [
+          {
+            "cells": ["认证模块与依赖风险分析", "仓库分析师", "运行中", "刚刚"],
+            "target": "running"
+          },
+          {
+            "cells": ["代码测试命令审批", "仓库分析师", "待审批", "2 分钟前"],
+            "target": "approval"
+          },
+          {
+            "cells": ["支付模块技术说明", "文档助手", "已完成", "12 分钟前"],
+            "target": "completed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "agents",
+      "title": "Agent 中心",
+      "section": "agents",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "职责、能力和发布版本集中管理。每次运行使用固定版本。",
+      "actions": [
+        {
+          "label": "创建 Agent",
+          "target": "agent-editor",
+          "variant": "primary"
+        }
+      ],
+      "cards": [
+        {
+          "title": "仓库分析师",
+          "body": "读取代码并委派只读检查，生成带来源的报告。",
+          "tag": "已发布 · v1.2",
+          "target": "agent-editor"
+        },
+        {
+          "title": "技术文档助手",
+          "body": "依据已有材料生成规范化文档，不自动发布。",
+          "tag": "已发布 · v1.0",
+          "target": "agent-editor"
+        },
+        {
+          "title": "依赖审查员",
+          "body": "只读检查依赖版本、许可和已知配置问题。",
+          "tag": "草稿",
+          "target": "agent-editor"
+        }
+      ],
+      "table": {
+        "title": "版本与维护",
+        "columns": ["名称", "版本", "工具权限", "维护者"],
+        "rows": [
+          {
+            "cells": ["仓库分析师", "v1.2", "读取 / 受控命令", "研发团队"],
+            "target": "agent-editor"
+          },
+          {
+            "cells": ["技术文档助手", "v1.0", "读取 / 工作区写入", "研发团队"],
+            "target": "agent-editor"
+          }
+        ]
+      }
+    },
+    {
+      "id": "agent-editor",
+      "title": "配置 Agent",
+      "section": "agents",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "先定义职责与边界，再发布可追溯的版本。",
+      "actions": [
+        {
+          "label": "返回列表",
+          "target": "agents",
+          "variant": "secondary"
+        },
+        {
+          "label": "发布 v1.3",
+          "target": "agent-published",
+          "variant": "primary",
+          "submit": true
+        }
+      ],
+      "form": [
+        {
+          "id": "agentName",
+          "label": "Agent 名称",
+          "value": "仓库分析师",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "id": "role",
+          "label": "角色与目标",
+          "value": "分析指定代码仓库，给出结构、依赖、安全与测试建议；所有结论保留文件来源。",
+          "kind": "textarea",
+          "required": true
+        },
+        {
+          "id": "model",
+          "label": "默认模型",
+          "value": "内网模型",
+          "kind": "select",
+          "options": ["内网模型", "企业模型网关"]
+        },
+        {
+          "id": "permission",
+          "label": "权限预设",
+          "value": "读取 + 受控命令",
+          "kind": "select",
+          "options": ["只读", "读取 + 受控命令"]
+        },
+        {
+          "id": "tools",
+          "label": "允许工具",
+          "value": "file.read · file.search · shell.exec（需审批）",
+          "kind": "readonly"
+        },
+        {
+          "id": "budget",
+          "label": "执行预算",
+          "value": "最多 30 步 / 15 分钟 / 2 个子任务",
+          "kind": "readonly"
+        }
+      ],
+      "notice": {
+        "tone": "info",
+        "text": "发布会创建完整配置快照，已启动的任务继续使用原版本。"
+      }
+    },
+    {
+      "id": "agent-published",
+      "title": "版本已发布",
+      "section": "agents",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "仓库分析师 v1.3 已发布，可在新建任务时选择（演示）。",
+      "actions": [
+        {
+          "label": "查看 Agent",
+          "target": "agents",
+          "variant": "secondary"
+        },
+        {
+          "label": "创建任务",
+          "target": "new-run",
+          "variant": "primary"
+        }
+      ],
+      "status": "已发布",
+      "cards": [
+        {
+          "title": "可追溯配置",
+          "body": "本版本包含角色、工具范围、模型策略、执行限制和审批策略。",
+          "tag": "v1.3"
+        },
+        {
+          "title": "历史运行保持原配置",
+          "body": "RUN-020 仍关联 v1.2；不会静默切换正在运行的任务。"
+        }
+      ]
+    },
+    {
+      "id": "new-run",
+      "title": "新建任务",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "给出明确目标，并确认 Agent 能访问的资源。",
+      "actions": [
+        {
+          "label": "取消",
+          "target": "overview",
+          "variant": "secondary"
+        },
+        {
+          "label": "开始执行",
+          "target": "running",
+          "variant": "primary",
+          "submit": true
+        }
+      ],
+      "form": [
+        {
+          "id": "goal",
+          "label": "任务目标",
+          "value": "分析认证模块与依赖风险，生成包含来源的报告。",
+          "kind": "textarea",
+          "required": true
+        },
+        {
+          "id": "agent",
+          "label": "Agent",
+          "value": "仓库分析师 · v1.2",
+          "kind": "select",
+          "options": ["仓库分析师 · v1.2", "技术文档助手 · v1.0", "仓库分析师 · v1.3"]
+        },
+        {
+          "id": "workspace",
+          "label": "工作区",
+          "value": "demo-repository",
+          "kind": "select",
+          "options": ["demo-repository"]
+        },
+        {
+          "id": "model",
+          "label": "模型",
+          "value": "内网模型",
+          "kind": "select",
+          "options": ["内网模型", "企业模型网关"]
+        },
+        {
+          "id": "mode",
+          "label": "执行位置",
+          "value": "服务端隔离环境",
+          "kind": "readonly"
+        },
+        {
+          "id": "scope",
+          "label": "本次授权",
+          "value": "读取工作区；命令执行单独审批；最多 2 个只读子任务。",
+          "kind": "readonly"
+        }
+      ],
+      "notice": {
+        "tone": "info",
+        "text": "此原型只演示界面与状态流转，不会调用模型、执行命令或访问真实文件。"
+      }
+    },
+    {
+      "id": "running",
+      "title": "认证模块与依赖风险分析",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "主任务正在收集证据，两个只读子 Agent 协同分析。",
+      "actions": [
+        {
+          "label": "查看子任务",
+          "target": "subagent",
+          "variant": "secondary"
+        },
+        {
+          "label": "取消运行",
+          "target": "cancel-confirm",
+          "variant": "danger"
+        }
+      ],
+      "status": "运行中",
+      "metrics": [
+        {
+          "label": "已执行步骤",
+          "value": "07 / 30",
+          "note": "步数预算"
+        },
+        {
+          "label": "Token 用量",
+          "value": "18.2k",
+          "note": "总预算 80k"
+        },
+        {
+          "label": "子任务",
+          "value": "1 / 2",
+          "note": "已完成"
+        },
+        {
+          "label": "已用时间",
+          "value": "02:18",
+          "note": "最长 15 分钟"
+        }
+      ],
+      "timeline": [
+        {
+          "title": "任务已接收",
+          "body": "已固定 Agent 版本、模型配置与权限范围。",
+          "state": "success"
+        },
+        {
+          "title": "读取代码目录",
+          "body": "读取 24 个文件，定位认证与依赖模块。",
+          "state": "success"
+        },
+        {
+          "title": "委派安全检查",
+          "body": "子任务 1 已完成，子任务 2 正在分析依赖。",
+          "state": "running",
+          "target": "subagent"
+        },
+        {
+          "title": "验证与生成报告",
+          "body": "受控命令将进入审批，未批准前不执行。",
+          "state": "running"
+        }
+      ],
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ],
+      "scenarios": [
+        {
+          "label": "出现审批",
+          "target": "approval",
+          "variant": "secondary"
+        },
+        {
+          "label": "模拟失败",
+          "target": "failed",
+          "variant": "secondary"
+        },
+        {
+          "label": "模拟断线",
+          "target": "disconnected",
+          "variant": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "subagent",
+      "title": "子任务 · 依赖风险检查",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "只读子任务；权限和预算受父任务限制。",
+      "actions": [
+        {
+          "label": "返回主任务",
+          "target": "running",
+          "variant": "primary"
+        }
+      ],
+      "status": "运行中",
+      "timeline": [
+        {
+          "title": "收到委派",
+          "body": "仅检查 package.json 与锁文件，禁止修改。",
+          "state": "success"
+        },
+        {
+          "title": "分析依赖",
+          "body": "对比声明与锁定版本，整理许可来源。",
+          "state": "running"
+        },
+        {
+          "title": "提交结构化结果",
+          "body": "返回摘要、证据与风险，供主 Agent 汇总。",
+          "state": "pending"
+        }
+      ],
+      "context": [
+        {
+          "label": "父任务",
+          "value": "RUN-020"
+        },
+        {
+          "label": "子任务",
+          "value": "RUN-020-B"
+        },
+        {
+          "label": "角色",
+          "value": "依赖审查员"
+        },
+        {
+          "label": "权限",
+          "value": "file.read / file.search"
+        },
+        {
+          "label": "预算",
+          "value": "最多 8 步 / 20k Token"
+        }
+      ],
+      "notice": {
+        "tone": "info",
+        "text": "取消父任务会通知所有子任务；子任务不能扩大文件、网络或命令权限。"
+      }
+    },
+    {
+      "id": "approval",
+      "title": "确认这一次命令执行",
+      "section": "approval",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "审批只适用于下方命令、目录和执行限制。",
+      "actions": [
+        {
+          "label": "拒绝执行",
+          "target": "denied",
+          "variant": "danger"
+        },
+        {
+          "label": "批准本次",
+          "target": "resumed",
+          "variant": "primary",
+          "decision": "approve"
+        }
+      ],
+      "status": "待审批",
+      "notice": {
+        "tone": "warning",
+        "text": "命令尚未执行。批准后只放行 CALL-009；参数或权限变化需重新校验。"
+      },
+      "code": {
+        "title": "待执行命令",
+        "value": "npm test -- --runInBand",
+        "caption": "用于验证认证模块的现有测试。可能在工作区生成测试缓存。"
+      },
+      "context": [
+        {
+          "label": "审批编号",
+          "value": "APR-018"
+        },
+        {
+          "label": "所属任务",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工具调用",
+          "value": "CALL-009 · shell.exec v1"
+        },
+        {
+          "label": "工作目录",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "参数摘要",
+          "value": "sha256: 4e91…b07c"
+        },
+        {
+          "label": "网络",
+          "value": "关闭"
+        },
+        {
+          "label": "超时",
+          "value": "60 秒"
+        },
+        {
+          "label": "授权范围",
+          "value": "仅本次调用"
+        }
+      ],
+      "form": [
+        {
+          "id": "reason",
+          "label": "审批备注（可选）",
+          "value": "",
+          "kind": "text"
+        }
+      ],
+      "scenarios": [
+        {
+          "label": "审批已过期",
+          "target": "approval-expired",
+          "variant": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "approval-expired",
+      "title": "审批已过期",
+      "section": "approval",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "APR-018 已超过有效期，未执行原请求。",
+      "actions": [
+        {
+          "label": "返回任务",
+          "target": "running",
+          "variant": "secondary"
+        },
+        {
+          "label": "批准本次",
+          "target": "resumed",
+          "variant": "primary",
+          "disabled": true,
+          "decision": "approve"
+        }
+      ],
+      "status": "已过期",
+      "notice": {
+        "tone": "warning",
+        "text": "旧审批不可再次批准。需由任务重新校验权限与参数，创建新的请求。"
+      },
+      "context": [
+        {
+          "label": "审批编号",
+          "value": "APR-018"
+        },
+        {
+          "label": "所属任务",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工具调用",
+          "value": "CALL-009 · shell.exec v1"
+        },
+        {
+          "label": "工作目录",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "参数摘要",
+          "value": "sha256: 4e91…b07c"
+        },
+        {
+          "label": "网络",
+          "value": "关闭"
+        },
+        {
+          "label": "超时",
+          "value": "60 秒"
+        },
+        {
+          "label": "授权范围",
+          "value": "仅本次调用"
+        }
+      ]
+    },
+    {
+      "id": "resumed",
+      "title": "受控命令执行中",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "APR-018 已批准，正在执行 CALL-009。",
+      "actions": [
+        {
+          "label": "取消运行",
+          "target": "cancel-confirm",
+          "variant": "danger"
+        }
+      ],
+      "status": "运行中",
+      "timeline": [
+        {
+          "title": "审批已记录",
+          "body": "批准人、策略版本和参数摘要已关联。",
+          "state": "success"
+        },
+        {
+          "title": "在隔离环境执行命令",
+          "body": "网络关闭，超时 60 秒。",
+          "state": "running"
+        },
+        {
+          "title": "汇总报告",
+          "body": "完成后关联测试结果与来源。",
+          "state": "pending"
+        }
+      ],
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ],
+      "scenarios": [
+        {
+          "label": "命令成功并生成报告",
+          "target": "completed",
+          "variant": "secondary"
+        },
+        {
+          "label": "命令失败",
+          "target": "failed",
+          "variant": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "denied",
+      "title": "命令已被拒绝",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "CALL-009 未执行。Agent 可以在已有只读权限内继续。",
+      "actions": [
+        {
+          "label": "返回概览",
+          "target": "overview",
+          "variant": "secondary"
+        },
+        {
+          "label": "继续只读分析",
+          "target": "read-only-completed",
+          "variant": "primary"
+        }
+      ],
+      "status": "操作被拒",
+      "notice": {
+        "tone": "warning",
+        "text": "拒绝结果已记录，不会自动重新申请相同命令绕过决定。"
+      },
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ]
+    },
+    {
+      "id": "failed",
+      "title": "任务执行失败",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "模型连接超时；失败步骤与已完成结果已保留。",
+      "actions": [
+        {
+          "label": "查看模型连接",
+          "target": "models",
+          "variant": "secondary"
+        },
+        {
+          "label": "创建新任务重试",
+          "target": "new-run",
+          "variant": "primary"
+        }
+      ],
+      "status": "失败",
+      "notice": {
+        "tone": "danger",
+        "text": "失败发生在模型调用阶段，无外部写操作结果不明；可以创建新 Run 重试。"
+      },
+      "timeline": [
+        {
+          "title": "读取文件已完成",
+          "body": "已保存 24 个文件的读取结果引用。",
+          "state": "success"
+        },
+        {
+          "title": "模型请求超时",
+          "body": "已达到本次调用的重试上限。",
+          "state": "error"
+        }
+      ],
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ]
+    },
+    {
+      "id": "disconnected",
+      "title": "正在恢复连接",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "页面连接中断，服务端任务可能仍在运行。",
+      "actions": [
+        {
+          "label": "重新连接",
+          "target": "running",
+          "variant": "primary"
+        }
+      ],
+      "status": "连接中断",
+      "notice": {
+        "tone": "warning",
+        "text": "不会因断线重复提交任务。重新连接后按事件游标补齐状态。"
+      },
+      "timeline": [
+        {
+          "title": "任务已接收",
+          "body": "已固定 Agent 版本、模型配置与权限范围。",
+          "state": "success"
+        },
+        {
+          "title": "读取代码目录",
+          "body": "读取 24 个文件，定位认证与依赖模块。",
+          "state": "success"
+        },
+        {
+          "title": "委派安全检查",
+          "body": "子任务 1 已完成，子任务 2 正在分析依赖。",
+          "state": "running",
+          "target": "subagent"
+        },
+        {
+          "title": "验证与生成报告",
+          "body": "受控命令将进入审批，未批准前不执行。",
+          "state": "running"
+        }
+      ],
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ]
+    },
+    {
+      "id": "cancel-confirm",
+      "title": "取消当前任务？",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "将向主任务与所有子任务发出取消信号。已生成的产物仍可查看。",
+      "actions": [
+        {
+          "label": "继续运行",
+          "target": "running",
+          "variant": "secondary"
+        },
+        {
+          "label": "确认取消",
+          "target": "cancelled",
+          "variant": "danger"
+        }
+      ],
+      "kind": "overlay",
+      "notice": {
+        "tone": "warning",
+        "text": "实际系统必须等待执行环境确认停止，才会进入“已取消”。原型展示确认后的状态。"
+      }
+    },
+    {
+      "id": "cancelled",
+      "title": "任务已取消",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "主任务和子任务均已确认停止。",
+      "actions": [
+        {
+          "label": "返回概览",
+          "target": "overview",
+          "variant": "secondary"
+        },
+        {
+          "label": "新建任务",
+          "target": "new-run",
+          "variant": "primary"
+        }
+      ],
+      "status": "已取消",
+      "notice": {
+        "tone": "info",
+        "text": "已完成的事件与中间结果保留，可追溯本次取消操作。"
+      },
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ]
+    },
+    {
+      "id": "completed",
+      "title": "分析报告已生成",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "主任务与两个子任务已完成，等待你确认结果是否满足目标。",
+      "actions": [
+        {
+          "label": "查看审计",
+          "target": "audit",
+          "variant": "secondary"
+        },
+        {
+          "label": "新建任务",
+          "target": "new-run",
+          "variant": "primary"
+        }
+      ],
+      "status": "执行完成",
+      "metrics": [
+        {
+          "label": "分析文件",
+          "value": "24",
+          "note": "保留文件来源"
+        },
+        {
+          "label": "执行步骤",
+          "value": "12",
+          "note": "上限 30"
+        },
+        {
+          "label": "Token",
+          "value": "32.4k",
+          "note": "总预算 80k"
+        },
+        {
+          "label": "运行时长",
+          "value": "04:12",
+          "note": "包含审批等待"
+        }
+      ],
+      "cards": [
+        {
+          "title": "技术分析报告.md",
+          "body": "包含结构说明、依赖风险、改进建议及文件来源。",
+          "tag": "Markdown · 演示产物",
+          "download": "technical-report.md"
+        },
+        {
+          "title": "验证结果",
+          "body": "测试已执行，示例测试通过。仍需人工审核建议。",
+          "tag": "CALL-009"
+        }
+      ],
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ],
+      "downloadContent": "技术分析报告（演示）\n\n已分析认证模块及依赖声明。\n来源：src/auth.ts、package.json。\n测试结果：示例测试通过。\n本报告仅用于产品原型，不代表真实代码分析。\n"
+    },
+    {
+      "id": "read-only-completed",
+      "title": "只读分析报告已生成",
+      "section": "running",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "已完成代码分析；受控测试命令被拒绝，测试结果尚未验证。",
+      "actions": [
+        {
+          "label": "查看拒绝记录",
+          "target": "audit",
+          "variant": "secondary"
+        },
+        {
+          "label": "返回概览",
+          "target": "overview",
+          "variant": "primary"
+        }
+      ],
+      "status": "执行完成",
+      "notice": {
+        "tone": "warning",
+        "text": "报告明确记录“测试未执行”，不会把未经验证的建议描述为已通过测试。"
+      },
+      "cards": [
+        {
+          "title": "只读分析报告.md",
+          "body": "结构和依赖分析已完成，测试结论待人工验证。",
+          "tag": "只读结果",
+          "download": "read-only-report.md"
+        }
+      ],
+      "context": [
+        {
+          "label": "任务编号",
+          "value": "RUN-020"
+        },
+        {
+          "label": "工作区",
+          "value": "/workspace/demo-repository"
+        },
+        {
+          "label": "Agent 版本",
+          "value": "仓库分析师 · v1.2"
+        },
+        {
+          "label": "模型",
+          "value": "内网模型 · 工具调用可用"
+        },
+        {
+          "label": "执行环境",
+          "value": "服务端 · 隔离工作区"
+        },
+        {
+          "label": "授权范围",
+          "value": "读取工作区；受控命令需审批"
+        }
+      ],
+      "downloadContent": "只读分析报告（演示）\n代码结构与依赖分析完成。\n测试未执行：CALL-009 被拒绝。\n不能据此判断测试通过。\n"
+    },
+    {
+      "id": "audit",
+      "title": "审计日志",
+      "section": "audit",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "从操作者、配置版本、审批决定追溯到具体任务和工具。",
+      "actions": [
+        {
+          "label": "查看任务",
+          "target": "completed",
+          "variant": "secondary"
+        }
+      ],
+      "table": {
+        "title": "最近操作",
+        "columns": ["时间", "操作者", "动作", "资源 / 结果"],
+        "rows": [
+          {
+            "cells": ["10:08:24", "yupengsheng", "批准工具调用", "APR-018 / 仅本次"],
+            "target": "approval"
+          },
+          {
+            "cells": ["10:08:25", "Runner", "开始执行", "CALL-009 / 参数匹配"],
+            "target": "resumed"
+          },
+          {
+            "cells": ["10:09:41", "Runner", "保存产物", "RUN-020 / 报告可下载"],
+            "target": "completed"
+          },
+          {
+            "cells": ["09:42:10", "yupengsheng", "发布 Agent", "仓库分析师 v1.2"],
+            "target": "agents"
+          }
+        ]
+      },
+      "notice": {
+        "tone": "info",
+        "text": "演示日志仅用于交互评审。生产日志需要服务端持久化、访问控制和保留策略。"
+      }
+    },
+    {
+      "id": "models",
+      "title": "模型连接",
+      "section": "models",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "按连接管理模型能力与可用范围，密钥仅在服务端保存。",
+      "actions": [
+        {
+          "label": "检查异常示例",
+          "target": "model-error",
+          "variant": "secondary"
+        },
+        {
+          "label": "创建任务",
+          "target": "new-run",
+          "variant": "primary"
+        }
+      ],
+      "cards": [
+        {
+          "title": "内网模型",
+          "body": "工具调用 · 64k 上下文 · 研发工作空间",
+          "tag": "连接正常",
+          "target": "new-run"
+        },
+        {
+          "title": "企业模型网关",
+          "body": "工具调用 · 128k 上下文 · 按组织策略使用",
+          "tag": "待检查",
+          "target": "model-error"
+        }
+      ],
+      "notice": {
+        "tone": "info",
+        "text": "原型不收集真实 API Key，不发送模型请求。"
+      }
+    },
+    {
+      "id": "model-error",
+      "title": "模型连接不可用",
+      "section": "models",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "无法连接到企业模型网关，请检查服务地址与部署网络。",
+      "actions": [
+        {
+          "label": "返回模型列表",
+          "target": "models",
+          "variant": "secondary"
+        },
+        {
+          "label": "重新测试（演示）",
+          "target": "models",
+          "variant": "primary",
+          "submit": true
+        }
+      ],
+      "status": "连接失败",
+      "notice": {
+        "tone": "danger",
+        "text": "生产界面应显示可行动的错误原因，并对密钥与响应敏感字段脱敏。"
+      },
+      "form": [
+        {
+          "id": "connection",
+          "label": "连接名称",
+          "value": "企业模型网关",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "id": "endpoint",
+          "label": "服务地址",
+          "value": "https://model.example.internal/v1",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "id": "secret",
+          "label": "密钥引用",
+          "value": "已配置 · 仅服务端可用",
+          "kind": "readonly"
+        }
+      ]
+    },
+    {
+      "id": "workspace",
+      "title": "空间设置",
+      "section": "workspace",
+      "eyebrow": "研发工作空间 / Agent Workbench",
+      "subtitle": "用空间成员、执行环境和预算控制 Agent 的可用范围。",
+      "actions": [
+        {
+          "label": "创建任务",
+          "target": "new-run",
+          "variant": "primary"
+        }
+      ],
+      "cards": [
+        {
+          "title": "研发工作空间",
+          "body": "项目资源：demo-repository；执行位置：服务端；默认关闭外网。",
+          "tag": "单组织 · 私有部署"
+        },
+        {
+          "title": "成员与职责",
+          "body": "管理员维护配置，成员提交任务，审批员决定受控动作，审计员只读查询。",
+          "tag": "按资源授权"
+        }
+      ],
+      "table": {
+        "title": "资源与策略",
+        "columns": ["资源", "访问策略", "范围"],
+        "rows": [
+          {
+            "cells": ["代码工作区", "读取；写入受控", "demo-repository"]
+          },
+          {
+            "cells": ["Shell", "每次审批；60秒超时", "隔离执行环境"]
+          },
+          {
+            "cells": ["子 Agent", "最多2个；只读", "继承父任务权限"]
+          },
+          {
+            "cells": ["模型预算", "80k Token / Run", "整棵任务树共享"]
+          }
+        ]
+      }
+    }
+  ],
+  "flows": [
+    {
+      "name": "任务与审批主路径",
+      "screens": ["overview", "new-run", "running", "approval", "resumed", "completed", "audit"]
+    },
+    {
+      "name": "拒绝与只读交付",
+      "screens": ["approval", "denied", "read-only-completed"]
+    },
+    {
+      "name": "失败与重试",
+      "screens": ["running", "failed", "new-run"]
+    },
+    {
+      "name": "取消与恢复连接",
+      "screens": ["running", "cancel-confirm", "cancelled", "disconnected", "running"]
+    },
+    {
+      "name": "Agent版本发布",
+      "screens": ["agents", "agent-editor", "agent-published", "new-run"]
+    }
+  ]
+}

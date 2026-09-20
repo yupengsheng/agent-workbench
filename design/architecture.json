@@ -1,0 +1,175 @@
+{
+  "title": "Agent Workbench · 目标技术架构",
+  "subtitle": "设计基线 v0.2 / 业务能力按阶段实现",
+  "width": 1380,
+  "height": 850,
+  "nodes": [
+    {
+      "id": "web",
+      "title": "Web 工作台",
+      "description": "Vue 3 · 路由 / 查询缓存 / 组件",
+      "x": 40,
+      "y": 100,
+      "width": 280,
+      "height": 116,
+      "group": "client"
+    },
+    {
+      "id": "api",
+      "title": "API 控制面",
+      "description": "Fastify · 身份 / 配置 / 任务 / 审批",
+      "x": 370,
+      "y": 100,
+      "width": 280,
+      "height": 116,
+      "group": "control"
+    },
+    {
+      "id": "db",
+      "title": "PostgreSQL 17",
+      "description": "业务状态 / 审计 / Outbox / 检查点",
+      "x": 1040,
+      "y": 100,
+      "width": 280,
+      "height": 116,
+      "group": "storage"
+    },
+    {
+      "id": "store",
+      "title": "产物存储",
+      "description": "ArtifactStore · 本地 / S3",
+      "x": 40,
+      "y": 360,
+      "width": 280,
+      "height": 116,
+      "group": "storage"
+    },
+    {
+      "id": "runner",
+      "title": "独立 Runner",
+      "description": "领取任务 / 租约 / 心跳 / 取消",
+      "x": 370,
+      "y": 360,
+      "width": 280,
+      "height": 116,
+      "group": "execution"
+    },
+    {
+      "id": "queue",
+      "title": "pg-boss",
+      "description": "任务调度 · 重复投递需幂等",
+      "x": 705,
+      "y": 360,
+      "width": 280,
+      "height": 116,
+      "group": "storage"
+    },
+    {
+      "id": "events",
+      "title": "事件投递",
+      "description": "Outbox → SSE · 游标补齐",
+      "x": 1040,
+      "y": 360,
+      "width": 280,
+      "height": 116,
+      "group": "control"
+    },
+    {
+      "id": "model",
+      "title": "模型适配器",
+      "description": "ModelPort · 供应商 SDK",
+      "x": 40,
+      "y": 620,
+      "width": 280,
+      "height": 116,
+      "group": "adapter"
+    },
+    {
+      "id": "engine",
+      "title": "Harness / EnginePort",
+      "description": "LangGraph JS · 显式中断 / 恢复",
+      "x": 370,
+      "y": 620,
+      "width": 280,
+      "height": 116,
+      "group": "execution"
+    },
+    {
+      "id": "policy",
+      "title": "工具管线",
+      "description": "参数校验 / 权限 / 审批 / 台账",
+      "x": 705,
+      "y": 620,
+      "width": 280,
+      "height": 116,
+      "group": "execution"
+    },
+    {
+      "id": "sandbox",
+      "title": "隔离执行环境",
+      "description": "OCI + gVisor · 文件 / Shell / 网络",
+      "x": 1040,
+      "y": 620,
+      "width": 280,
+      "height": 116,
+      "group": "sandbox"
+    }
+  ],
+  "edges": [
+    {
+      "from": "web",
+      "to": "api",
+      "label": "REST"
+    },
+    {
+      "from": "api",
+      "to": "db",
+      "label": "事务"
+    },
+    {
+      "from": "db",
+      "to": "queue",
+      "label": "持久队列"
+    },
+    {
+      "from": "queue",
+      "to": "runner",
+      "label": "领取 / fencing"
+    },
+    {
+      "from": "runner",
+      "to": "engine",
+      "label": "推进"
+    },
+    {
+      "from": "engine",
+      "to": "model",
+      "label": "推理"
+    },
+    {
+      "from": "engine",
+      "to": "policy",
+      "label": "工具意图"
+    },
+    {
+      "from": "policy",
+      "to": "sandbox",
+      "label": "受控执行"
+    },
+    {
+      "from": "runner",
+      "to": "store",
+      "label": "产物"
+    },
+    {
+      "from": "db",
+      "to": "events",
+      "label": "已提交事件"
+    },
+    {
+      "from": "events",
+      "to": "web",
+      "label": "SSE / 游标"
+    }
+  ]
+}
