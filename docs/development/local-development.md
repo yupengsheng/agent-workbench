@@ -42,6 +42,18 @@ npm run start --workspace @agent-workbench/api
 npm run db:migrate --workspace @agent-workbench/api
 ```
 
+首次创建本地管理员和默认工作空间时，使用临时环境变量运行一次：
+
+```bash
+export ADMIN_EMAIL=admin@example.com
+read -r -s ADMIN_PASSWORD
+export ADMIN_PASSWORD
+npm run admin:init --workspace @agent-workbench/api
+unset ADMIN_PASSWORD
+```
+
+初始化命令只接受空用户库，密码使用 Argon2id 哈希保存；已有用户时会拒绝执行。登录后可通过 `GET /api/v1/workspaces` 查询成员关系，使用 `POST /api/v1/workspaces` 创建并自动成为新空间 owner。
+
 单独开发应用时先执行 `npm run build --workspace @agent-workbench/contracts`。构建输出位于各 workspace 的 `dist/`，不提交到 Git。
 
 ## 新增业务模块

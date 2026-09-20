@@ -69,6 +69,21 @@ export const memberships = pgTable(
   (table) => [primaryKey({ columns: [table.workspaceId, table.userId] })],
 );
 
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    ...auditTimestamps,
+  },
+  (table) => [uniqueIndex('sessions_token_hash_idx').on(table.tokenHash)],
+);
+
 export const modelConnections = pgTable(
   'model_connections',
   {
@@ -153,7 +168,15 @@ export const workspaceRelations = relations(workspaces, ({ many }) => ({
 
 export const userRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
+  sessions: many(sessions),
   auditRecords: many(auditRecords),
+}));
+
+export const sessionRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
 }));
 
 export const agentRelations = relations(agents, ({ many }) => ({
@@ -171,6 +194,7 @@ export const schema = {
   users,
   workspaces,
   memberships,
+  sessions,
   modelConnections,
   agents,
   agentVersions,

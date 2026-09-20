@@ -8,10 +8,13 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate": "tsx src/db/migrate.ts",
+    "admin:init": "tsx src/cli/init-admin.ts",
     "start": "node --env-file-if-exists=.env dist/main.js"
   },
   "dependencies": {
     "@agent-workbench/contracts": "0.1.0",
+    "@fastify/cookie": "^11.1.2",
+    "argon2": "^0.45.1",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.6.2",
     "pg": "^8.23.0"
