@@ -1,8 +1,18 @@
 import Fastify, { type FastifyServerOptions } from 'fastify';
+import type { DatabaseHandle } from './db/client.js';
 import { registerHealthRoutes } from './modules/health/routes.js';
 
-export function createApp(options: FastifyServerOptions = {}) {
+export interface AppDependencies {
+  database: DatabaseHandle | undefined;
+}
+
+export function createApp(
+  options: FastifyServerOptions = {},
+  dependencies: AppDependencies = { database: undefined },
+) {
   const app = Fastify(options);
-  app.register(registerHealthRoutes);
+  app.register(async (instance) => {
+    await registerHealthRoutes(instance, dependencies.database);
+  });
   return app;
 }

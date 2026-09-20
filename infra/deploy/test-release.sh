@@ -43,12 +43,24 @@ fi
 
 mkdir -p "$release_dir"
 tar -xzf "$archive_path" -C "$release_dir"
+if [[ -f "$deploy_root/.env" ]]; then
+  ln -sfn "$deploy_root/.env" "$release_dir/apps/api/.env"
+  set -a
+  # shellcheck disable=SC1091
+  source "$deploy_root/.env"
+  set +a
+fi
 cd "$release_dir"
 
 echo "Installing dependencies for release $release_id"
 npm ci
 echo "Building release $release_id"
 npm run check
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  echo "Applying database migrations"
+  npm run db:migrate --workspace @agent-workbench/api
+fi
 
 configure_proxy() {
   local source="$release_dir/infra/deploy/nginx-agent-workbench-test.conf"

@@ -2,7 +2,7 @@
 
 可私有化部署的多 Agent 工作台。目标是统一管理 Agent、模型、用户与审计，通过 Think-Act-Observe 引擎执行文件、命令、网页和子任务操作。
 
-**当前阶段：G0 方案与原型。** 已提供可运行的 Vue Web 首页、Fastify 健康检查 API、共享类型、Apache-2.0 许可证、技术选型/架构/阶段门槛文档、浏览器交互原型和 Figma 生成插件。模型调用、任务引擎、数据库、身份认证、审批和审计尚未实现。
+**当前阶段：G0 → M1 持久化边界。** 已提供可运行的 Vue Web 首页、Fastify 健康检查 API、PostgreSQL 迁移与就绪检查、Apache-2.0 许可证、技术选型/架构/阶段门槛文档、浏览器交互原型和 Figma 生成插件。身份认证、资源权限、模型连接 API、模型调用、任务引擎、审批和审计写入仍在建设。
 
 ## 快速开始
 
@@ -16,8 +16,9 @@ npm run dev
 - Web 工作台：http://127.0.0.1:5173
 - API 存活检查：http://127.0.0.1:4100/healthz
 - 共享接口：http://127.0.0.1:4100/api/v1/health
+- API 就绪检查：http://127.0.0.1:4100/readyz（配置数据库后才会返回 200）
 
-默认不需要数据库、模型密钥或外网服务。依赖首次安装需要访问 npm。`Ctrl+C` 停止开发进程。API 默认只监听本机；更改 API 端口时需同步修改 Web 的 Vite 代理。
+默认开发启动仍不强制数据库；依赖首次安装需要访问 npm。`Ctrl+C` 停止开发进程。API 默认只监听本机；更改 API 端口时需同步修改 Web 的 Vite 代理。
 
 ```bash
 npm run check       # 格式、类型和生产构建
@@ -26,9 +27,10 @@ npm run design:sync # 同步浏览器原型和架构图资产
 npm run format      # 格式化
 npm run build       # 构建共享包、API 和 Web
 npm run start --workspace @agent-workbench/api
+npm run db:migrate --workspace @agent-workbench/api # DATABASE_URL 已配置时执行迁移
 ```
 
-生产构建不等同于可生产部署版本。现有 API 仅暴露健康检查，业务认证与执行隔离须在开放业务功能前完成。
+生产构建不等同于可生产部署版本。当前 API 只提供健康/就绪检查和数据库迁移边界，业务认证与执行隔离须在开放业务功能前完成。
 
 ## 目录
 

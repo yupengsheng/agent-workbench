@@ -2,7 +2,7 @@
 
 负责认证、Agent 配置、模型登记、任务提交、审批、审计查询与事件订阅。
 
-当前仅实现 `GET /healthz` 与 `GET /api/v1/health`，均为公开的进程存活检查；未接入数据库、认证、模型或任务执行。未来增加 `/readyz` 检查必要依赖，不能将存活检查当成生产就绪检查。
+当前实现 `GET /healthz` 与 `GET /api/v1/health` 进程存活检查，以及检查数据库依赖的 `GET /readyz` 与 `GET /api/v1/ready`。配置 `DATABASE_URL` 后先执行 `npm run db:migrate --workspace @agent-workbench/api`；尚未接入认证、模型或任务执行。不能将存活检查当成生产就绪检查。
 
 业务按领域放进 `src/modules/<domain>/`。首批领域为 `identity`、`agents`、`models`、`runs`、`approvals`、`audit`，在实现对应需求时创建。每个领域按需要拆分 routes、schema、service、repository；禁止 route 直接运行 Shell 或拼接模型请求。
 

@@ -1,6 +1,6 @@
 # 可选开发数据库
 
-仅提供 PostgreSQL 17 开发环境；API 尚未接入数据库，当前 Web/API 启动无需此服务。不是完整生产部署方案。
+仅提供 PostgreSQL 17 开发环境；API 已支持可选数据库连接和迁移，当前 Web/API 无 `DATABASE_URL` 时仍可启动。不是完整生产部署方案。
 
 需要时在根目录执行：
 
@@ -17,10 +17,18 @@ docker compose --env-file infra/compose/.env -f infra/compose/compose.yaml ps
 
 默认仅暴露本机 5432；端口冲突时修改 POSTGRES_PORT。数据保存在命名卷中，不进入 Git。密码变更不会自动改变已初始化数据库的密码。
 
+数据库启动后，复制并编辑 `apps/api/.env.example` 中的 `DATABASE_URL`，然后执行：
+
+```bash
+npm run db:migrate --workspace @agent-workbench/api
+```
+
+API 的 `/readyz` 和 `/api/v1/ready` 会在迁移完成且数据库可连接时返回 200。
+
 停止并保留数据：
 
 ```bash
 docker compose --env-file infra/compose/.env -f infra/compose/compose.yaml down
 ```
 
-不要在日常关闭时加 `--volumes`，它会删除数据库卷。API 数据库连接、迁移和应用服务容器会在对应里程碑中加入。
+不要在日常关闭时加 `--volumes`，它会删除数据库卷。模型连接、身份认证、权限服务和应用服务容器会在对应里程碑中加入。

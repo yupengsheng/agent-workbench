@@ -11,7 +11,7 @@ npm run dev
 
 开发命令先构建 contracts，再同时启动共享包监听、API 和 Web；任一长期进程退出时停止其余进程。访问 `http://127.0.0.1:5173`，页面会请求 API 的健康检查。
 
-当前默认无数据库依赖。首次安装需要网络；如已有锁文件，使用 npm ci 保持一致。不要在其他项目或用户全局环境中安装本项目依赖。
+开发启动默认不强制数据库；需要验证 M1 持久化时再启动 PostgreSQL 并执行迁移。首次安装需要网络；如已有锁文件，使用 npm ci 保持一致。不要在其他项目或用户全局环境中安装本项目依赖。
 
 ## 配置
 
@@ -21,11 +21,13 @@ API 从进程环境和 `apps/api/.env` 加载配置，默认值可直接启动�
 cp apps/api/.env.example apps/api/.env
 ```
 
-| 变量      | 默认值    | 说明                           |
-| --------- | --------- | ------------------------------ |
-| HOST      | 127.0.0.1 | 开发仅监听本机                 |
-| PORT      | 4100      | API 端口，必须为 1～65535 整数 |
-| LOG_LEVEL | info      | Fastify 日志级别               |
+| 变量         | 默认值    | 说明                                    |
+| ------------ | --------- | --------------------------------------- |
+| HOST         | 127.0.0.1 | 开发仅监听本机                          |
+| PORT         | 4100      | API 端口，必须为 1～65535 整数          |
+| LOG_LEVEL    | info      | Fastify 日志级别                        |
+| DATABASE_URL | 空        | PostgreSQL 连接串；配置后启用 `/readyz` |
+| DB_POOL_MAX  | 10        | API 数据库连接池上限                    |
 
 Web 使用 Vite 5173 端口和 `/api` 同域代理。端口冲突时会显式失败。API 改端口后同步修改 `apps/web/vite.config.ts` 的 proxy。任何 `VITE_` 变量都会进入浏览器构建，不得放真实密钥。
 
@@ -37,6 +39,7 @@ npm run format
 npm run typecheck
 npm run build
 npm run start --workspace @agent-workbench/api
+npm run db:migrate --workspace @agent-workbench/api
 ```
 
 单独开发应用时先执行 `npm run build --workspace @agent-workbench/contracts`。构建输出位于各 workspace 的 `dist/`，不提交到 Git。
@@ -58,4 +61,4 @@ Runner、runtime 和 tools 当前只有 README。在对应里程碑加入 packag
 - `Cannot find module @agent-workbench/contracts`：先运行根 `npm ci` 和 contracts 构建，或使用根 `npm run dev`。
 - 页面显示 API 不可用：确认 4100 端口的 API 已启动，检查代理配置和控制台日志。
 - `EADDRINUSE`：确认现有监听进程归属，使用其他端口或关闭自己的进程；不要终止未知项目。
-- Docker 不可用：不影响当前 Web/API 骨架；数据库仅在 M1 接入后成为运行依赖。
+- Docker 不可用：不影响无数据库的 Web/API 开发；要验证 M1 迁移和 `/readyz`，需要可连接的 PostgreSQL 17。

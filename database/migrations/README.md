@@ -1,6 +1,14 @@
-# 数据库迁移（规划目录）
+# 数据库迁移
 
-目标数据库 PostgreSQL 17。当前尚无迁移与应用连接，禁止把此目录视作已建立的数据层。
+目标数据库 PostgreSQL 17。M1 已加入首个身份与配置迁移，API 连接和领域 CRUD 仍按阶段实现。
+
+在配置 `DATABASE_URL` 后运行：
+
+```bash
+npm run db:migrate --workspace @agent-workbench/api
+```
+
+迁移器使用 `schema_migrations` 表和 PostgreSQL advisory lock 保证单次应用；每个 SQL 文件在独立事务中执行。迁移文件只允许新增，不能修改已经应用的文件。
 
 在 M1 确定迁移工具后，按 `0001_<description>.sql` 递增命名。已发布的迁移不可修改，修正用新迁移。初始迁移包含身份、工作空间和 Agent 版本；Run、事件与审批跟随对应功能添加。
 
