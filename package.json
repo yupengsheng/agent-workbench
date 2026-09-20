@@ -1,0 +1,28 @@
+{
+  "name": "agent-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "可私有化部署的多 Agent 工作台",
+  "engines": {
+    "node": ">=22.12.0 <23",
+    "npm": ">=9"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "predev": "npm run build --workspace @agent-workbench/contracts",
+    "dev": "concurrently --kill-others --names contracts,api,web \"npm run dev --workspace @agent-workbench/contracts\" \"npm run dev --workspace @agent-workbench/api\" \"npm run dev --workspace @agent-workbench/web\"",
+    "build": "npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/api && npm run build --workspace @agent-workbench/web",
+    "typecheck": "npm run build --workspace @agent-workbench/contracts && npm run typecheck --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}

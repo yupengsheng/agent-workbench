@@ -1,0 +1,22 @@
+{
+  "name": "@agent-workbench/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@agent-workbench/contracts": "0.1.0",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "vite": "^7.1.7",
+    "vue-tsc": "^3.0.8"
+  }
+}
