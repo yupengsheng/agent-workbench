@@ -50,6 +50,7 @@ agent-workbench/
 │   ├── development/           # 本地开发与模块约定
 │   ├── deployment/            # 部署、升级、备份规划
 │   └── research/              # Mao 借鉴与已核实边界
+├── design/                    # tokens、浏览器原型、架构图和 Figma 插件
 ├── infra/compose/             # 可选本地 PostgreSQL；尚未接入 API
 ├── database/migrations/       # 迁移命名与维护约定，待实现
 ├── tests/                     # 跨服务验收用例的放置约定
@@ -61,7 +62,7 @@ agent-workbench/
 ## 从哪里开始
 
 1. 阅读 [产品需求](docs/product/prd.md)，确认用户、主场景和 MVP 范围。
-2. 阅读 [架构](docs/architecture/overview.md) 和 [领域模型](docs/architecture/domain-model.md)，确定模块边界。
+2. 阅读 [技术架构总设计](docs/architecture/technical-architecture.md)、[架构总览](docs/architecture/overview.md) 和 [领域模型](docs/architecture/domain-model.md)，确定模块边界。
 3. 按 [MVP 里程碑](docs/roadmap/mvp.md) 实现第一条任务闭环。
 4. 遵循 [开发指南](docs/development/local-development.md)、[贡献约定](CONTRIBUTING.md) 和 [AGENTS.md](AGENTS.md)。
 

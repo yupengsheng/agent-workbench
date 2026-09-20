@@ -1,6 +1,6 @@
 # 文档索引
 
-文档基线：2026-09-20。产品与架构均为 v0.1 草案；当前代码只完成开发骨架。修改实现范围时同步更新根 README 和里程碑。
+文档基线：2026-09-20。产品 v0.1、技术架构 v0.3；当前代码只完成开发骨架。修改实现范围时同步更新根 README 和里程碑。
 
 | 文档                                                        | 内容                                              |
 | ----------------------------------------------------------- | ------------------------------------------------- |
@@ -8,6 +8,7 @@
 | [信息架构](product/information-architecture.md)             | 页面、角色与关键操作路径                          |
 | [设计系统](product/design-system.md)                        | Tokens、组件状态、视觉和可访问性基线              |
 | [交互原型](product/prototype.md)                            | 页面地图、状态逻辑和评审脚本                      |
+| [技术架构总设计](architecture/technical-architecture.md)    | 分层、部署拓扑、数据流和质量门槛                  |
 | [架构总览](architecture/overview.md)                        | 控制面/执行面、依赖与演进                         |
 | [领域模型](architecture/domain-model.md)                    | Agent、Session、Run、调用、审批、产物             |
 | [模块边界](architecture/module-boundaries.md)               | 控制面、执行面、Web 与组件职责                    |

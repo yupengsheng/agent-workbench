@@ -1,6 +1,6 @@
 # 架构总览
 
-状态：目标架构。现有代码只包含 Web → 健康检查 API，不包含下图中的业务运行能力。
+状态：目标架构索引。完整的分层、部署拓扑、数据流和质量门槛见[技术架构总设计](technical-architecture.md)。现有代码只包含 Web → 健康检查 API，不包含下图中的业务运行能力。
 
 ```mermaid
 flowchart LR
@@ -13,9 +13,11 @@ flowchart LR
   Policy --> Sandbox[隔离执行环境]
   Runner -->|事件与检查点| DB
   Runner --> Artifacts[产物存储]
-  API -->|快照与事件订阅| Web
+  API -->|快照与 SSE 事件订阅| Web
   API --> Artifacts
 ```
+
+架构图源文件为 [`design/architecture.json`](../../design/architecture.json)，可生成 SVG 导出图 [`design/exports/architecture.svg`](../../design/exports/architecture.svg)，并由 Figma 插件生成可编辑的 `02 Architecture` 页面。
 
 ## 模块与依赖
 
@@ -27,7 +29,7 @@ flowchart LR
 
 初期采用模块化单仓库，Web 与 API 独立构建；Runner 在实际执行里程碑成为独立进程，保持凭证和操作系统权限边界。MVP 使用 PostgreSQL 保存业务、事件与任务交接，不预置 Redis、向量数据库、消息集群。
 
-任务领取使用事务/租约与心跳，确保一个 Run 只有一个有效持有者；取消与审批保存在库中。事件持久化后通知客户端，不能以 WebSocket 或内存 Map 作为唯一事实来源。
+任务领取使用事务/租约与心跳，确保一个 Run 只有一个有效持有者；取消与审批保存在库中。事件持久化后通过 SSE 通知客户端，不能以内存 Map 作为唯一事实来源。
 
 ## 执行边界
 
