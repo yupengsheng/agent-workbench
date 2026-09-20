@@ -10,7 +10,7 @@ npm run db:migrate --workspace @agent-workbench/api
 
 迁移器使用 `schema_migrations` 表和 PostgreSQL advisory lock 保证单次应用；每个 SQL 文件在独立事务中执行。迁移文件只允许新增，不能修改已经应用的文件。
 
-在 M1 确定迁移工具后，按 `0001_<description>.sql` 递增命名。已发布的迁移不可修改，修正用新迁移。初始迁移包含身份、工作空间和 Agent 版本；Run、事件与审批跟随对应功能添加。
+在 M1 确定迁移工具后，按 `0001_<description>.sql` 递增命名。已发布的迁移不可修改，修正用新迁移。初始迁移包含身份、工作空间和 Agent 版本，`0002_sessions.sql` 增加仅保存哈希令牌的会话表；Run、事件与审批跟随对应功能添加。
 
 每个迁移需验证空库初始化和上一版本升级；涉及数据回填或删除时说明备份、锁表与恢复方案。开发种子数据与结构迁移分开，不将固定生产账号或密钥写入迁移。
 
