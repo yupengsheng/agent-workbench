@@ -72,4 +72,4 @@ agent-workbench/
 - Agent 配置、会话和每次 Run 分开建模；已启动 Run 使用不可变配置快照。
 - 服务端执行先落地，LOCAL Runner、MCP 和更多客户端后续扩展。
 - 不复制 Mao 源码；本仓库包含独立骨架和有出处的设计参考。
-- 当前所有 npm 包均为 private；未配置 Git remote，项目开源许可证待所有者决定。
+- 当前所有 npm 包均为 private；项目开源许可证待所有者决定。
