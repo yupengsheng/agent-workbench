@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { and, eq, gt } from 'drizzle-orm';
-import argon2 from 'argon2';
+import { argon2id, argon2Verify } from 'hash-wasm';
 import type { AuthResponse, UserSummary } from '@agent-workbench/contracts';
 import type { DatabaseHandle } from '../../db/client.js';
 import { sessions, users } from '../../db/schema.js';
@@ -38,17 +38,20 @@ export function toAuthResponse(user: UserSummary): AuthResponse {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 19_456,
-    timeCost: 2,
+  return argon2id({
+    password,
+    salt: randomBytes(16),
+    iterations: 2,
+    memorySize: 19_456,
     parallelism: 1,
+    hashLength: 32,
+    outputType: 'encoded',
   });
 }
 
 export async function verifyPassword(passwordHash: string, password: string): Promise<boolean> {
   try {
-    return await argon2.verify(passwordHash, password);
+    return await argon2Verify({ hash: passwordHash, password });
   } catch {
     return false;
   }
