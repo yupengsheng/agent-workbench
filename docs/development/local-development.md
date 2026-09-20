@@ -21,13 +21,14 @@ API 从进程环境和 `apps/api/.env` 加载配置，默认值可直接启动�
 cp apps/api/.env.example apps/api/.env
 ```
 
-| 变量         | 默认值    | 说明                                    |
-| ------------ | --------- | --------------------------------------- |
-| HOST         | 127.0.0.1 | 开发仅监听本机                          |
-| PORT         | 4100      | API 端口，必须为 1～65535 整数          |
-| LOG_LEVEL    | info      | Fastify 日志级别                        |
-| DATABASE_URL | 空        | PostgreSQL 连接串；配置后启用 `/readyz` |
-| DB_POOL_MAX  | 10        | API 数据库连接池上限                    |
+| 变量          | 默认值    | 说明                                    |
+| ------------- | --------- | --------------------------------------- |
+| HOST          | 127.0.0.1 | 开发仅监听本机                          |
+| PORT          | 4100      | API 端口，必须为 1～65535 整数          |
+| LOG_LEVEL     | info      | Fastify 日志级别                        |
+| DATABASE_URL  | 空        | PostgreSQL 连接串；配置后启用 `/readyz` |
+| DB_POOL_MAX   | 10        | API 数据库连接池上限                    |
+| COOKIE_SECURE | false     | 生产 HTTPS 应设为 `true`                |
 
 Web 使用 Vite 5173 端口和 `/api` 同域代理。端口冲突时会显式失败。API 改端口后同步修改 `apps/web/vite.config.ts` 的 proxy。任何 `VITE_` 变量都会进入浏览器构建，不得放真实密钥。
 

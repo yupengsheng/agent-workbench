@@ -32,6 +32,12 @@ function unauthorized(reply: FastifyReply) {
   });
 }
 
+function unauthenticated(reply: FastifyReply) {
+  return reply.code(401).send({
+    error: { code: 'unauthorized', message: '请先登录' },
+  });
+}
+
 function parseLoginBody(body: unknown): LoginBody | undefined {
   if (typeof body !== 'object' || body === null) return undefined;
   const candidate = body as Record<string, unknown>;
@@ -103,7 +109,7 @@ export async function registerIdentityRoutes(
   app.get('/api/v1/auth/me', async (request, reply) => {
     if (!database) return unavailable(reply);
     const user = await getAuthenticatedUser(request, database);
-    if (!user) return unauthorized(reply);
+    if (!user) return unauthenticated(reply);
     return reply.send(toAuthResponse(user));
   });
 }
