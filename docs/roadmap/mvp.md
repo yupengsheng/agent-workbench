@@ -18,7 +18,7 @@
 
 当前进度：已落地 PostgreSQL 连接边界、首个身份/工作空间/模型连接/Agent 版本/审计迁移、数据库就绪检查、本地账号会话和 Workspace membership 基础接口；模型密钥适配、模型能力测试、Agent 配置 API 和完整权限矩阵尚未完成。
 
-- [x] 接入 PostgreSQL，建立迁移和开发种子数据。
+- [x] 接入 PostgreSQL，建立迁移和数据库连接验证。
 - [x] 本地账号、Argon2id 密码哈希、HttpOnly 会话管理；无硬编码默认生产密码。
 - [x] 工作空间查询/创建、owner membership 与资源归属基础校验。
 - [x] 提供只允许空用户库执行的管理员初始化命令。
