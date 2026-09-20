@@ -1,0 +1,115 @@
+name: Deploy test environment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-environment-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to test ECS
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      WORKBENCH_INSTANCE_ID: ${{ secrets.WORKBENCH_TEST_INSTANCE_ID }}
+      WORKBENCH_ACCESS_KEY_ID: ${{ secrets.WORKBENCH_ACCESS_KEY_ID }}
+      WORKBENCH_ACCESS_KEY_SECRET: ${{ secrets.WORKBENCH_ACCESS_KEY_SECRET }}
+      WORKBENCH_REGION: ${{ vars.WORKBENCH_TEST_REGION }}
+      WORKBENCH_TEST_ROOT: ${{ vars.WORKBENCH_TEST_ROOT }}
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies and validate
+        run: |
+          npm ci
+          npm run check
+
+      - name: Install Workbench CLI
+        run: curl -fsSL https://workbench-cli.oss-cn-hangzhou.aliyuncs.com/install.sh | bash
+
+      - name: Configure Workbench credentials
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${WORKBENCH_ACCESS_KEY_ID:?WORKBENCH_ACCESS_KEY_ID secret is required}"
+          : "${WORKBENCH_ACCESS_KEY_SECRET:?WORKBENCH_ACCESS_KEY_SECRET secret is required}"
+          : "${WORKBENCH_INSTANCE_ID:?WORKBENCH_TEST_INSTANCE_ID secret is required}"
+          mkdir -p "$HOME/.workbench"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          config_dir = Path.home() / ".workbench"
+          config_path = config_dir / "config.json"
+          config_dir.mkdir(mode=0o700, exist_ok=True)
+          config_path.write_text(
+              json.dumps(
+                  {
+                      "current": "test",
+                      "profiles": {
+                          "test": {
+                              "mode": "AK",
+                              "access_key_id": os.environ["WORKBENCH_ACCESS_KEY_ID"],
+                              "access_key_secret": os.environ["WORKBENCH_ACCESS_KEY_SECRET"],
+                              "language": "en",
+                          }
+                      },
+                  }
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          config_path.chmod(0o600)
+          PY
+
+      - name: Package the checked out commit
+        run: git archive --format=tar.gz --output="/tmp/agent-workbench-${GITHUB_SHA}.tar.gz" "$GITHUB_SHA"
+
+      - name: Upload release archive and deploy script
+        env:
+          ARCHIVE: /tmp/agent-workbench-${{ github.sha }}.tar.gz
+          REMOTE_ARCHIVE: /tmp/agent-workbench-${{ github.sha }}.tar.gz
+          REMOTE_SCRIPT: /tmp/agent-workbench-release-${{ github.sha }}.sh
+        run: |
+          set -Eeuo pipefail
+          workbench upload "$ARCHIVE" "$REMOTE_ARCHIVE" \
+            --instance-id "$WORKBENCH_INSTANCE_ID" \
+            --region "${WORKBENCH_REGION:-cn-hangzhou}" \
+            --force
+          workbench upload infra/deploy/test-release.sh "$REMOTE_SCRIPT" \
+            --instance-id "$WORKBENCH_INSTANCE_ID" \
+            --region "${WORKBENCH_REGION:-cn-hangzhou}" \
+            --force
+
+      - name: Deploy and run remote smoke checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          deploy_root="${WORKBENCH_TEST_ROOT:-/opt/agent-workbench-test}"
+          printf -v remote_command 'bash %q %q %q %q' \
+            "/tmp/agent-workbench-release-${GITHUB_SHA}.sh" \
+            "/tmp/agent-workbench-${GITHUB_SHA}.tar.gz" \
+            "$deploy_root" \
+            "$GITHUB_SHA"
+          workbench exec \
+            --instance-id "$WORKBENCH_INSTANCE_ID" \
+            --region "${WORKBENCH_REGION:-cn-hangzhou}" \
+            --timeout 1800 \
+            --command "$remote_command"

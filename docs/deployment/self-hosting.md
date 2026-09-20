@@ -1,6 +1,42 @@
 # 私有化部署规划
 
-状态：规划。当前仅有本地开发骨架与可选 PostgreSQL Compose，没有完整生产部署包。
+状态：规划。当前有本地开发骨架、可选 PostgreSQL Compose，以及面向测试 ECS 的 Workbench CLI 发布流程；没有完整生产部署包。
+
+## 测试环境自动部署
+
+`.github/workflows/deploy-test.yml` 在 `main` 每次 push 后运行。流程会先执行 `npm run check`，再按以下命令安装 Workbench CLI：
+
+```bash
+curl -fsSL https://workbench-cli.oss-cn-hangzhou.aliyuncs.com/install.sh | bash
+```
+
+随后工作流创建当前 commit 的归档，通过 Workbench CLI 上传到测试 ECS，在 `/opt/agent-workbench-test`（可配置）创建版本目录，执行 `npm ci`、`npm run check`，启动 API 和 Web 预览服务，并检查：
+
+- API：`http://127.0.0.1:4100/healthz`
+- Web：`http://127.0.0.1:5173/`
+
+这是测试环境进程管理脚本，不具备生产级高可用、滚动升级或外部反向代理能力。服务默认只绑定测试 ECS 本机回环地址，需要通过已有内网反向代理或 Workbench 连接访问。
+
+### GitHub 配置
+
+在 GitHub 的 `test` Environment 中配置以下 Secrets：
+
+| 名称                          | 用途                    |
+| ----------------------------- | ----------------------- |
+| `WORKBENCH_ACCESS_KEY_ID`     | 阿里云 AccessKey ID     |
+| `WORKBENCH_ACCESS_KEY_SECRET` | 阿里云 AccessKey Secret |
+| `WORKBENCH_TEST_INSTANCE_ID`  | 测试 ECS 实例 ID        |
+
+可选 Variables：
+
+| 名称                    | 默认值                      | 用途               |
+| ----------------------- | --------------------------- | ------------------ |
+| `WORKBENCH_TEST_REGION` | `cn-hangzhou`               | ECS 所在地域       |
+| `WORKBENCH_TEST_ROOT`   | `/opt/agent-workbench-test` | 测试环境部署根目录 |
+
+ECS 需要预装 Node.js 24、npm 和 curl，并允许当前 Workbench 身份通过实例管理通道执行命令。凭据只在 GitHub runner 的临时 `~/.workbench/config.json` 中生成，文件权限为 `0600`，不写入仓库或远程发布目录。
+
+首次启用前，应先在 GitHub Actions 手动运行 `Deploy test environment`，确认实例权限、Node 版本、端口和内网访问策略；通过后，后续 `main` 提交会自动部署。
 
 ## 交付顺序
 
