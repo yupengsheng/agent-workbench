@@ -536,7 +536,15 @@ async function createArchitecture() {
   const page = figma.createPage();
   page.name = '02 Architecture';
   await figma.setCurrentPageAsync(page);
-  const root = frame(page, 'Architecture / Agent Workbench', 0, 0, 1500, 940, 'canvas');
+  const root = frame(
+    page,
+    'Architecture / Agent Workbench',
+    0,
+    0,
+    architecture.width + 120,
+    architecture.height + 120,
+    'canvas',
+  );
   await text(root, architecture.title, 50, 42, 28, 'ink', true);
   await text(root, architecture.subtitle, 52, 86, 12, 'muted');
   const nodes = new Map<string, FrameNode>();
@@ -552,9 +560,11 @@ async function createArchitecture() {
         ? 'warningSoft'
         : item.group === 'storage'
           ? 'blueSoft'
-          : item.group === 'execution'
-            ? 'primarySoft'
-            : 'surface',
+          : item.group === 'security'
+            ? 'dangerSoft'
+            : item.group === 'execution'
+              ? 'primarySoft'
+              : 'surface',
       9,
     );
     node.strokes = [paint('border')];
@@ -567,21 +577,25 @@ async function createArchitecture() {
     const from = nodes.get(edge.from);
     const to = nodes.get(edge.to);
     if (!from || !to) continue;
+    const fromCenter = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
+    const toCenter = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const direction = (horizontal ? dx : dy) >= 0 ? 1 : -1;
+    const start = horizontal
+      ? { x: fromCenter.x + (direction * from.width) / 2, y: fromCenter.y }
+      : { x: fromCenter.x, y: fromCenter.y + (direction * from.height) / 2 };
+    const end = horizontal
+      ? { x: toCenter.x - (direction * to.width) / 2, y: toCenter.y }
+      : { x: toCenter.x, y: toCenter.y - (direction * to.height) / 2 };
     const line = figma.createLine();
     line.name = `Edge / ${edge.label}`;
-    line.x = from.x + from.width;
-    line.y = from.y + from.height / 2;
-    const length = Math.max(
-      20,
-      Math.sqrt(
-        (to.x - (from.x + from.width)) ** 2 +
-          (to.y + to.height / 2 - (from.y + from.height / 2)) ** 2,
-      ),
-    );
+    line.x = start.x;
+    line.y = start.y;
+    const length = Math.max(20, Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2));
     line.resize(length, 0);
-    line.rotation =
-      Math.atan2(to.y + to.height / 2 - (from.y + from.height / 2), to.x - (from.x + from.width)) *
-      (180 / Math.PI);
+    line.rotation = Math.atan2(end.y - start.y, end.x - start.x) * (180 / Math.PI);
     line.strokes = [paint('muted')];
     line.strokeWeight = 1;
     root.appendChild(line);
