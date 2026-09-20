@@ -27,14 +27,15 @@ curl -fsSL https://workbench-cli.oss-cn-hangzhou.aliyuncs.com/install.sh | bash
 | `WORKBENCH_ACCESS_KEY_SECRET` | 阿里云 AccessKey Secret |
 | `WORKBENCH_TEST_INSTANCE_ID`  | 测试 ECS 实例 ID        |
 
-可选 Variables：
+可选 Variable：
 
-| 名称                    | 默认值                      | 用途               |
-| ----------------------- | --------------------------- | ------------------ |
-| `WORKBENCH_TEST_REGION` | `cn-hangzhou`               | ECS 所在地域       |
-| `WORKBENCH_TEST_ROOT`   | `/opt/agent-workbench-test` | 测试环境部署根目录 |
+| 名称                  | 默认值                      | 用途               |
+| --------------------- | --------------------------- | ------------------ |
+| `WORKBENCH_TEST_ROOT` | `/opt/agent-workbench-test` | 测试环境部署根目录 |
 
-ECS 需要预装 Node.js 24、npm 和 curl，并允许当前 Workbench 身份通过实例管理通道执行命令。凭据只在 GitHub runner 的临时 `~/.workbench/config.json` 中生成，文件权限为 `0600`，不写入仓库或远程发布目录。
+当前目标实例固定使用 `cn-shanghai`；迁移地域时同步修改工作流中的 `WORKBENCH_REGION`。
+
+ECS 需要预装 Node.js 22.12+（或 Node.js 24）、npm 和 curl，并允许当前 Workbench 身份通过实例管理通道执行命令。Node.js 22 是现有开发环境的临时兼容版本，生产目标仍为 Node.js 24。凭据只在 GitHub runner 的临时 `~/.workbench/config.json` 中生成，文件权限为 `0600`，不写入仓库或远程发布目录。
 
 首次启用前，应先在 GitHub Actions 手动运行 `Deploy test environment`，确认实例权限、Node 版本、端口和内网访问策略；通过后，后续 `main` 提交会自动部署。
 

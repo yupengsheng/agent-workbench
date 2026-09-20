@@ -21,7 +21,7 @@ jobs:
       WORKBENCH_INSTANCE_ID: ${{ secrets.WORKBENCH_TEST_INSTANCE_ID }}
       WORKBENCH_ACCESS_KEY_ID: ${{ secrets.WORKBENCH_ACCESS_KEY_ID }}
       WORKBENCH_ACCESS_KEY_SECRET: ${{ secrets.WORKBENCH_ACCESS_KEY_SECRET }}
-      WORKBENCH_REGION: ${{ vars.WORKBENCH_TEST_REGION }}
+      WORKBENCH_REGION: cn-shanghai
       WORKBENCH_TEST_ROOT: ${{ vars.WORKBENCH_TEST_ROOT }}
     steps:
       - name: Check out commit
@@ -91,11 +91,11 @@ jobs:
           set -Eeuo pipefail
           workbench upload "$ARCHIVE" "$REMOTE_ARCHIVE" \
             --instance-id "$WORKBENCH_INSTANCE_ID" \
-            --region "${WORKBENCH_REGION:-cn-hangzhou}" \
+            --region "${WORKBENCH_REGION:-cn-shanghai}" \
             --force
           workbench upload infra/deploy/test-release.sh "$REMOTE_SCRIPT" \
             --instance-id "$WORKBENCH_INSTANCE_ID" \
-            --region "${WORKBENCH_REGION:-cn-hangzhou}" \
+            --region "${WORKBENCH_REGION:-cn-shanghai}" \
             --force
 
       - name: Deploy and run remote smoke checks

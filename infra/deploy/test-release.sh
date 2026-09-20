@@ -22,9 +22,14 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   exit 2
 fi
 
-node_major=$(node -p "process.versions.node.split('.')[0]")
-if [[ "$node_major" != "24" ]]; then
-  echo "Node.js 24 is required on the test instance; found $(node --version)" >&2
+node_major=$(node -p "Number(process.versions.node.split('.')[0])")
+node_minor=$(node -p "Number(process.versions.node.split('.')[1])")
+if [[ "$node_major" != "22" && "$node_major" != "24" ]]; then
+  echo "Node.js 22.12+ or 24 is required on the test instance; found $(node --version)" >&2
+  exit 2
+fi
+if [[ "$node_major" == "22" && "$node_minor" -lt 12 ]]; then
+  echo "Node.js 22.12+ is required on the test instance; found $(node --version)" >&2
   exit 2
 fi
 
