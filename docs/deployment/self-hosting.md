@@ -15,6 +15,8 @@ curl -fsSL https://workbench-cli.oss-cn-hangzhou.aliyuncs.com/install.sh | bash
 - API：`http://127.0.0.1:4100/healthz`
 - Web：`http://127.0.0.1:5173/`
 
+部署脚本还会安装 [`nginx-agent-workbench-test.conf`](../../infra/deploy/nginx-agent-workbench-test.conf)，执行 `nginx -t` 后 reload Nginx，将 `139.224.103.34/` 转发到 Web，将 `/api/` 转发到 API。
+
 这是测试环境进程管理脚本，不具备生产级高可用、滚动升级或外部反向代理能力。服务默认只绑定测试 ECS 本机回环地址，需要通过已有内网反向代理或 Workbench 连接访问。
 
 ### GitHub 配置

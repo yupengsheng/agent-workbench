@@ -50,6 +50,44 @@ npm ci
 echo "Building release $release_id"
 npm run check
 
+configure_proxy() {
+  local source="$release_dir/infra/deploy/nginx-agent-workbench-test.conf"
+  local target=/etc/nginx/conf.d/agent-workbench-test.conf
+  if [[ ! -f "$source" ]]; then
+    return 0
+  fi
+  if ! command -v nginx >/dev/null 2>&1; then
+    echo "nginx is not installed; skipping public reverse proxy configuration" >&2
+    return 0
+  fi
+
+  local backup
+  local had_config=0
+  backup=$(mktemp)
+  if [[ -f "$target" ]]; then
+    cp "$target" "$backup"
+    had_config=1
+  fi
+  install -m 0644 "$source" "$target"
+  if nginx -t >/dev/null 2>&1; then
+    systemctl reload nginx
+    rm -f "$backup"
+    return 0
+  fi
+
+  if [[ "$had_config" == "1" ]]; then
+    install -m 0644 "$backup" "$target"
+  else
+    rm -f "$target"
+  fi
+  rm -f "$backup"
+  echo "nginx configuration test failed; previous configuration restored" >&2
+  nginx -t
+  exit 1
+}
+
+configure_proxy
+
 stop_service() {
   local name=$1
   local pid_file="$runtime_dir/$name.pid"
