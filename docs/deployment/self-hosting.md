@@ -17,6 +17,8 @@ curl -fsSL https://workbench-cli.oss-cn-hangzhou.aliyuncs.com/install.sh | bash
 
 部署脚本还会安装 [`nginx-agent-workbench-test.conf`](../../infra/deploy/nginx-agent-workbench-test.conf)，执行 `nginx -t` 后 reload Nginx，将 `139.224.103.34/` 转发到 Web，将 `/api/` 转发到 API。
 
+M1 测试数据库由 [`setup-test-db.sh`](../../infra/deploy/setup-test-db.sh) 初始化。它只在部署根目录没有 `.env` 时生成随机数据库密码，使用 Docker Compose 启动 PostgreSQL 17，并将连接串保存在权限为 `0600` 的远程文件中；后续发布自动读取该文件并执行未应用的迁移。
+
 这是测试环境进程管理脚本，不具备生产级高可用、滚动升级或外部反向代理能力。服务默认只绑定测试 ECS 本机回环地址，需要通过已有内网反向代理或 Workbench 连接访问。
 
 ### GitHub 配置
