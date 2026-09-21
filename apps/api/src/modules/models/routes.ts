@@ -15,6 +15,7 @@ import type { DatabaseHandle } from '../../db/client.js';
 import { auditRecords, modelConnections } from '../../db/schema.js';
 import { getAuthenticatedUser } from '../identity/service.js';
 import { canManageWorkspace, getWorkspaceAccess } from '../workspaces/access.js';
+import { decryptModelSecret, encryptModelSecret, getModelSecretKey } from './secrets.js';
 
 interface WorkspaceParams {
   workspaceId: string;
@@ -29,6 +30,7 @@ interface CreateConnectionBody {
   provider: string;
   modelIdentifier: string;
   secretRef: string;
+  secret?: string;
   baseUrl: string;
   capabilities?: Record<string, boolean>;
 }
@@ -37,6 +39,7 @@ interface UpdateConnectionBody {
   name?: string;
   modelIdentifier?: string;
   secretRef?: string;
+  secret?: string;
   baseUrl?: string;
   capabilities?: Record<string, boolean>;
   status?: ModelConnectionStatus;
@@ -70,7 +73,16 @@ function invalidRequest(reply: FastifyReply) {
   return reply.code(400).send({
     error: {
       code: 'invalid_request',
-      message: '模型连接字段格式不正确；secretRef 只能是 none、env:NAME 或 secret:PATH',
+      message: '模型连接字段格式不正确；密钥可以直接填写，或使用 none、env:NAME、secret:PATH 引用',
+    },
+  });
+}
+
+function secretStoreUnavailable(reply: FastifyReply) {
+  return reply.code(503).send({
+    error: {
+      code: 'model_secret_store_unavailable',
+      message: '服务端尚未配置模型密钥加密主密钥，请联系管理员完成部署配置',
     },
   });
 }
@@ -99,6 +111,13 @@ function parseSecretRef(value: unknown): string | undefined {
     return value;
   }
   return undefined;
+}
+
+function parseManagedSecret(value: unknown): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return null;
+  const secret = value.trim();
+  return secret.length > 0 && secret.length <= 4096 ? secret : null;
 }
 
 function parseText(value: unknown, maxLength: number): string | undefined {
@@ -150,12 +169,30 @@ function parseCreateBody(body: unknown): CreateConnectionBody | undefined {
   const name = parseText(candidate.name, 120);
   const provider = parseProvider(candidate.provider);
   const modelIdentifier = parseText(candidate.modelIdentifier, 200);
+  const managedSecret = parseManagedSecret(candidate.secret);
   const secretRef = parseSecretRef(candidate.secretRef);
   const baseUrl = provider ? parseBaseUrl(candidate.baseUrl, provider) : undefined;
   const capabilities = parseCapabilities(candidate.capabilities);
-  if (!name || !provider || !modelIdentifier || !secretRef || !baseUrl || !capabilities)
+  if (
+    !name ||
+    !provider ||
+    !modelIdentifier ||
+    managedSecret === null ||
+    (!managedSecret && !secretRef) ||
+    (managedSecret !== undefined && candidate.secretRef !== undefined) ||
+    !baseUrl ||
+    !capabilities
+  )
     return undefined;
-  return { name, provider, modelIdentifier, secretRef, baseUrl, capabilities };
+  return {
+    name,
+    provider,
+    modelIdentifier,
+    secretRef: managedSecret !== undefined ? 'managed' : (secretRef ?? 'none'),
+    ...(managedSecret !== undefined ? { secret: managedSecret } : {}),
+    baseUrl,
+    capabilities,
+  };
 }
 
 function parseUpdateBody(body: unknown): UpdateConnectionBody | undefined {
@@ -177,6 +214,12 @@ function parseUpdateBody(body: unknown): UpdateConnectionBody | undefined {
     if (!secretRef) return undefined;
     result.secretRef = secretRef;
   }
+  if ('secret' in candidate) {
+    const secret = parseManagedSecret(candidate.secret);
+    if (!secret) return undefined;
+    result.secret = secret;
+  }
+  if ('secret' in candidate && 'secretRef' in candidate) return undefined;
   if ('baseUrl' in candidate) {
     const baseUrl = parseBaseUrl(candidate.baseUrl, 'self-hosted');
     if (!baseUrl) return undefined;
@@ -298,6 +341,15 @@ export async function registerModelRoutes(
       const body = parseCreateBody(request.body);
       if (!body) return invalidRequest(reply);
 
+      let secretCiphertext: string | null = null;
+      if (body.secret) {
+        try {
+          secretCiphertext = encryptModelSecret(body.secret);
+        } catch {
+          return secretStoreUnavailable(reply);
+        }
+      }
+
       try {
         const row = await context.database.db.transaction(async (tx) => {
           const [created] = await tx
@@ -308,6 +360,7 @@ export async function registerModelRoutes(
               provider: body.provider,
               modelIdentifier: body.modelIdentifier,
               secretRef: body.secretRef,
+              secretCiphertext,
               baseUrl: body.baseUrl,
               capabilities: body.capabilities,
               createdBy: context.user.id,
@@ -358,6 +411,15 @@ export async function registerModelRoutes(
       const body = parseUpdateBody(request.body);
       if (!body) return invalidRequest(reply);
 
+      let secretCiphertext: string | null | undefined;
+      if (body.secret) {
+        try {
+          secretCiphertext = encryptModelSecret(body.secret);
+        } catch {
+          return secretStoreUnavailable(reply);
+        }
+      }
+
       const [existing] = await context.database.db
         .select()
         .from(modelConnections)
@@ -371,10 +433,20 @@ export async function registerModelRoutes(
       if (!existing) return notFound(reply);
 
       try {
+        const { secret, ...connectionFields } = body;
+        const updateValues = {
+          ...connectionFields,
+          ...(secret
+            ? { secretRef: 'managed', secretCiphertext }
+            : body.secretRef
+              ? { secretCiphertext: null }
+              : {}),
+          updatedAt: new Date(),
+        };
         const row = await context.database.db.transaction(async (tx) => {
           const [updated] = await tx
             .update(modelConnections)
-            .set({ ...body, updatedAt: new Date() })
+            .set(updateValues)
             .where(eq(modelConnections.id, existing.id))
             .returning();
           if (!updated) return undefined;
@@ -436,7 +508,17 @@ export async function registerModelRoutes(
         });
       }
 
-      const apiKey = await createEnvironmentSecretResolver().resolve(connection.secretRef);
+      let apiKey: string | undefined;
+      if (connection.secretRef === 'managed') {
+        try {
+          getModelSecretKey();
+          apiKey = decryptModelSecret(connection.secretCiphertext);
+        } catch {
+          return secretStoreUnavailable(reply);
+        }
+      } else {
+        apiKey = await createEnvironmentSecretResolver().resolve(connection.secretRef);
+      }
       if (!apiKey) {
         return reply.code(400).send({
           error: { code: 'secret_unavailable', message: '模型连接引用的服务端密钥不可用' },

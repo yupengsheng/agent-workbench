@@ -7,7 +7,7 @@
 - 用户工作台和管理员控制台先共用 Vue 应用，通过 `/app`、`/admin` 路由与服务端权限区分；必要时再拆为独立静态站点。
 - 飞书等第三方机器人只作为 `ChannelAdapter`，通过 API 调用 Run、Approval、Artifact 和通知能力，不能直接访问数据库、ModelPort 或 Runner。
 - 模型执行统一经过 `ModelPort`；首个实现使用 DeepSeek 的 OpenAI-compatible 接口，随后支持自研 OpenAI-compatible 服务；非兼容协议增加独立适配器。
-- 模型密钥只由 Runner/API 服务端通过 `secretRef` 解析，客户端、事件和审计只保留引用存在性与脱敏信息。
+- 模型密钥只由 Runner/API 服务端使用托管密钥解密或通过 `secretRef` 解析；客户端、事件和审计只保留引用存在性与脱敏信息。
 
 ## 取舍
 

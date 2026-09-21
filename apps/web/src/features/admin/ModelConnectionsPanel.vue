@@ -23,7 +23,7 @@ interface ModelForm {
   name: string;
   provider: ProviderPreset;
   modelIdentifier: string;
-  secretRef: string;
+  secret: string;
   baseUrl: string;
   capabilities: Record<string, boolean>;
   status: ModelConnectionStatus;
@@ -54,7 +54,7 @@ function emptyForm(): ModelForm {
     name: '',
     provider: 'deepseek',
     modelIdentifier: 'deepseek-chat',
-    secretRef: 'env:DEEPSEEK_API_KEY',
+    secret: '',
     baseUrl: 'https://api.deepseek.com',
     capabilities: { streaming: true, tools: true },
     status: 'active',
@@ -91,7 +91,7 @@ function openEdit(model: ModelConnectionSummary) {
     name: model.name,
     provider: model.provider === 'deepseek' ? 'deepseek' : 'openai-compatible',
     modelIdentifier: model.modelIdentifier,
-    secretRef: '',
+    secret: '',
     baseUrl: model.baseUrl,
     capabilities: { ...model.capabilities },
     status: model.status,
@@ -117,18 +117,12 @@ function selectProvider() {
     if (!editingId.value && (!draft.modelIdentifier || draft.modelIdentifier === 'gpt-4o')) {
       draft.modelIdentifier = 'deepseek-chat';
     }
-    if (!editingId.value && (!draft.secretRef || draft.secretRef === 'env:OPENAI_API_KEY')) {
-      draft.secretRef = 'env:DEEPSEEK_API_KEY';
-    }
   } else {
     if (!draft.baseUrl || draft.baseUrl === 'https://api.deepseek.com') {
       draft.baseUrl = 'https://your-model.example.com/v1';
     }
     if (!editingId.value && (!draft.modelIdentifier || draft.modelIdentifier === 'deepseek-chat')) {
       draft.modelIdentifier = 'your-model';
-    }
-    if (!editingId.value && (!draft.secretRef || draft.secretRef === 'env:DEEPSEEK_API_KEY')) {
-      draft.secretRef = 'env:MODEL_API_KEY';
     }
   }
 }
@@ -141,20 +135,20 @@ function buildInput(): ModelConnectionInput | undefined {
   const name = draft.name.trim();
   const modelIdentifier = draft.modelIdentifier.trim();
   const baseUrl = draft.baseUrl.trim();
-  const secretRef = draft.secretRef.trim();
+  const secret = draft.secret.trim();
   if (!name || !modelIdentifier || !baseUrl) {
     formError.value = '名称、模型标识和 Base URL 不能为空';
     return undefined;
   }
-  if (!editingId.value && !secretRef) {
-    formError.value = '请填写服务端密钥引用；没有密钥时填写 none';
+  if (!editingId.value && !secret) {
+    formError.value = '请填写模型 API Key；密钥会在服务端加密保存';
     return undefined;
   }
   return {
     name,
     provider: draft.provider,
     modelIdentifier,
-    secretRef: secretRef || 'none',
+    ...(secret ? { secret } : {}),
     baseUrl,
     capabilities: draft.capabilities,
   };
@@ -176,7 +170,7 @@ async function saveModel() {
         capabilities: input.capabilities,
         status: draft.status,
       };
-      if (draft.secretRef.trim()) update.secretRef = input.secretRef;
+      if (input.secret) update.secret = input.secret;
       await updateModelConnection(props.workspaceId, editingId.value, update);
       notice.value = '模型连接已更新';
     } else {
@@ -318,17 +312,15 @@ function formatDate(value: string | null) {
           <small>服务端会调用该地址的 <code>/chat/completions</code>。</small>
         </label>
         <label class="form-grid-wide">
-          服务端密钥引用
+          模型 API Key
           <input
-            v-model="draft.secretRef"
-            type="text"
-            maxlength="256"
-            :placeholder="editingId ? '留空表示保持当前引用' : 'env:DEEPSEEK_API_KEY'"
+            v-model="draft.secret"
+            type="password"
+            autocomplete="new-password"
+            maxlength="4096"
+            :placeholder="editingId ? '留空表示保持当前密钥' : '输入模型 API Key'"
           />
-          <small
-            >只填 <code>env:NAME</code>、<code>secret:PATH</code> 或 <code>none</code>，不要粘贴原始
-            API Key。</small
-          >
+          <small>密钥通过 TLS 发送，并使用服务端主密钥加密保存；编辑时留空表示保持当前密钥。</small>
         </label>
       </div>
 

@@ -1,6 +1,6 @@
 # 模型提供商与自研模型路线
 
-状态：DeepSeek 适配器已在 `packages/runtime` 完成协议级 smoke 验证；API 模型连接管理、管理员配置页面和服务端测试接口已实现。真实联网测试需要在部署环境配置对应的 `env:NAME` 密钥引用；Runner 调用尚未接入。
+状态：DeepSeek 适配器已在 `packages/runtime` 完成协议级 smoke 验证；API 模型连接管理、管理员配置页面和服务端测试接口已实现。管理员可直接录入 API Key，服务端用 `MODEL_SECRET_ENCRYPTION_KEY` 加密保存；也可配置 `env:NAME` 密钥引用。Runner 调用尚未接入。
 
 ## 选择比较
 
@@ -13,7 +13,7 @@
 
 ## 第一阶段：DeepSeek
 
-`createDeepSeekClient` 默认使用 `https://api.deepseek.com/chat/completions` 和 `deepseek-chat`，支持消息、工具描述、温度、最大输出 Token、工具调用解析、用量和可重试错误。真实 API Key 只通过服务端 `env:VARIABLE` 引用解析，不能进入浏览器、事件或审计 metadata。
+`createDeepSeekClient` 默认使用 `https://api.deepseek.com/chat/completions` 和 `deepseek-chat`，支持消息、工具描述、温度、最大输出 Token、工具调用解析、用量和可重试错误。真实 API Key 由服务端从托管密钥存储或 `env:VARIABLE` 引用解析，不能进入浏览器、事件或审计 metadata。
 
 连接记录中的 `provider=deepseek`、模型标识和能力声明由管理员配置；Runner 在创建 ModelPort 时重新解析 secretRef，并把调用用量和响应状态写入执行事件。能力声明不能代替真实测试结果。
 

@@ -1,6 +1,6 @@
 # Harness 运行内核
 
-当前已实现 `ModelPort`、DeepSeek OpenAI-compatible 适配器、通用 OpenAI-compatible 适配器和环境变量 secretRef 解析；Think-Act-Observe 引擎仍按 M2 实现。
+当前已实现 `ModelPort`、DeepSeek OpenAI-compatible 适配器、通用 OpenAI-compatible 适配器和环境变量 secretRef 解析；管理 API 另提供 AES-256-GCM 托管密钥解密边界；Think-Act-Observe 引擎仍按 M2 实现。
 
 计划模块：
 

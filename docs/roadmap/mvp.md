@@ -22,9 +22,9 @@
 - [x] 本地账号、Argon2id 密码哈希、HttpOnly 会话管理；无硬编码默认生产密码。
 - [x] 工作空间查询/创建、owner membership 与资源归属基础校验。
 - [x] 提供只允许空用户库执行的管理员初始化命令。
-- [x] 模型连接登记、Workspace 隔离、secretRef 引用和脱敏响应。
+- [x] 模型连接登记、Workspace 隔离、托管密钥加密存储、secretRef 引用和脱敏响应。
 - [x] ModelPort、DeepSeek OpenAI-compatible 适配器和自研兼容模型扩展边界。
-- [x] 模型连接 baseUrl、服务端环境密钥解析和管理员触发测试接口。
+- [x] 模型连接 baseUrl、托管/环境密钥解析、管理员配置页面和触发测试接口。
 - [ ] 配置真实 DeepSeek 密钥并完成模型能力测试。
 - [x] Agent 草稿、配置版本、模型连接归属校验和单版本发布。
 - [x] Workspace 创建、模型连接创建/修改的管理审计和只读查询。

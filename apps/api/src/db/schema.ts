@@ -100,6 +100,7 @@ export const modelConnections = pgTable(
     provider: text('provider').notNull(),
     modelIdentifier: text('model_identifier').notNull(),
     secretRef: text('secret_ref').notNull(),
+    secretCiphertext: text('secret_ciphertext'),
     baseUrl: text('base_url').notNull().default('https://api.deepseek.com'),
     capabilities: jsonb('capabilities').$type<Record<string, boolean>>().notNull().default({}),
     status: modelConnectionStatus('status').notNull().default('active'),

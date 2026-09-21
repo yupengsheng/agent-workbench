@@ -21,15 +21,16 @@ API 从进程环境和 `apps/api/.env` 加载配置，默认值可直接启动�
 cp apps/api/.env.example apps/api/.env
 ```
 
-| 变量                      | 默认值    | 说明                                                  |
-| ------------------------- | --------- | ----------------------------------------------------- |
-| HOST                      | 127.0.0.1 | 开发仅监听本机                                        |
-| PORT                      | 4100      | API 端口，必须为 1～65535 整数                        |
-| LOG_LEVEL                 | info      | Fastify 日志级别                                      |
-| DATABASE_URL              | 空        | PostgreSQL 连接串；配置后启用 `/readyz`               |
-| DB_POOL_MAX               | 10        | API 数据库连接池上限                                  |
-| COOKIE_SECURE             | false     | 生产 HTTPS 应设为 `true`                              |
-| ALLOW_INSECURE_MODEL_URLS | false     | 仅本地测试时允许 HTTP 模型 endpoint；生产保持 `false` |
+| 变量                        | 默认值    | 说明                                                    |
+| --------------------------- | --------- | ------------------------------------------------------- |
+| HOST                        | 127.0.0.1 | 开发仅监听本机                                          |
+| PORT                        | 4100      | API 端口，必须为 1～65535 整数                          |
+| LOG_LEVEL                   | info      | Fastify 日志级别                                        |
+| DATABASE_URL                | 空        | PostgreSQL 连接串；配置后启用 `/readyz`                 |
+| DB_POOL_MAX                 | 10        | API 数据库连接池上限                                    |
+| COOKIE_SECURE               | false     | 生产 HTTPS 应设为 `true`                                |
+| ALLOW_INSECURE_MODEL_URLS   | false     | 仅本地测试时允许 HTTP 模型 endpoint；生产保持 `false`   |
+| MODEL_SECRET_ENCRYPTION_KEY | 空        | 管理后台录入模型密钥时使用的 32 字节 AES-256-GCM 主密钥 |
 
 Web 使用 Vite 5173 端口和 `/api` 同域代理。端口冲突时会显式失败。API 改端口后同步修改 `apps/web/vite.config.ts` 的 proxy。任何 `VITE_` 变量都会进入浏览器构建，不得放真实密钥。
 
@@ -68,7 +69,7 @@ npm run admin:init --workspace @agent-workbench/api
 
 初始化命令只接受空用户库，密码使用 Argon2id 哈希保存；已有用户时会拒绝执行。登录后可通过 `GET /api/v1/workspaces` 查询成员关系，使用 `POST /api/v1/workspaces` 创建并自动成为新空间 owner。
 
-DeepSeek 连接使用 `secretRef: "env:DEEPSEEK_API_KEY"`，API 只在服务端测试或 Runner 启动时解析该变量。不要把 `DEEPSEEK_API_KEY` 写入 `.env.example`、前端变量、模型连接响应或日志；连通性测试接口只返回状态、模型和用量摘要。
+管理员可以直接在 `/admin` 录入模型 API Key。API 使用 `MODEL_SECRET_ENCRYPTION_KEY` 在服务端加密保存，前端、模型列表、审计和日志都不会回显密钥。部署环境也可以使用 `secretRef: "env:DEEPSEEK_API_KEY"`，API 只在服务端测试或 Runner 启动时解析该变量；不要把 `DEEPSEEK_API_KEY` 写入 `.env.example`、前端变量、模型连接响应或日志。连通性测试接口只返回状态、模型和用量摘要。
 
 单独开发应用时先执行 `npm run build --workspace @agent-workbench/contracts`。构建输出位于各 workspace 的 `dist/`，不提交到 Git。
 

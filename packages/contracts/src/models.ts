@@ -24,7 +24,10 @@ export interface ModelConnectionInput {
   name: string;
   provider: string;
   modelIdentifier: string;
-  secretRef: string;
+  /** Write-only managed secret. It is never returned by the API. */
+  secret?: string;
+  /** Optional server-side reference for deployments using an external secret store. */
+  secretRef?: string;
   baseUrl: string;
   capabilities: Record<string, boolean>;
 }
