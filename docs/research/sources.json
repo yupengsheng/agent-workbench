@@ -137,6 +137,25 @@
       "retrievedAt": "2026-09-20",
       "status": "retrieved",
       "sha256": "7bb8bb11e0b999d3a3790bec7951f6f2de640ebe2ce5f8fb58e234387acaa7f8"
+    },
+    {
+      "id": "loop-engineering",
+      "url": "https://addyosmani.com/blog/loop-engineering/",
+      "retrievedAt": "2026-09-21",
+      "status": "user-provided-reference",
+      "note": "Chinese article text supplied by the user; repository stores a summary and project mapping, not a copied full text."
+    },
+    {
+      "id": "harness-engineering-coding-agent-users",
+      "url": "https://martinfowler.com/articles/harness-engineering.html",
+      "retrievedAt": "2026-09-21",
+      "status": "cited-by-user-provided-reference"
+    },
+    {
+      "id": "ralph-loop-amplitude",
+      "url": "https://amplitude.com/blog/ralph-loop",
+      "retrievedAt": "2026-09-21",
+      "status": "cited-by-user-provided-reference"
     }
   ]
 }
