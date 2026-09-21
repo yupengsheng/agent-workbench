@@ -1,6 +1,6 @@
 # Web 工作台
 
-Vue 3 + Vite，当前包含 `/app` 用户工作台、`/admin` 管理员控制台、登录会话和真实 API 健康检查。管理员可以在模型连接面板新增或编辑 DeepSeek、OpenAI-compatible/自研模型，启停连接并发起服务端连通性测试。Vite 将 `/api` 代理到 `http://127.0.0.1:4100`，访问默认入口 `http://127.0.0.1:5173`。
+Vue 3 + Vite，当前包含 `/app` 用户工作台、C 端同步 AI 对话、`/admin` 管理员控制台、登录会话和真实 API 健康检查。管理员可以在模型连接面板新增或编辑 DeepSeek、OpenAI-compatible/自研模型，启停连接并发起服务端连通性测试；用户可以选择可用模型并在当前浏览器会话中连续对话。Vite 将 `/api` 代理到 `http://127.0.0.1:4100`，访问默认入口 `http://127.0.0.1:5173`。
 
 后续按业务建立 `src/features/agents`、`runs`、`approvals`、`settings`；公共展示组件放 `src/components`，HTTP / 事件客户端放 `src/lib`。路由、状态管理和 UI 组件库按首个业务需求引入。
 

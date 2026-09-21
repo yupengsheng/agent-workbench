@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createEnvironmentSecretResolver } from '@agent-workbench/runtime';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -64,4 +65,14 @@ export function decryptModelSecret(
   } catch {
     return undefined;
   }
+}
+
+export async function resolveModelSecret(
+  secretRef: string,
+  secretCiphertext: string | null | undefined,
+): Promise<string | undefined> {
+  if (secretRef === 'managed') {
+    return decryptModelSecret(secretCiphertext);
+  }
+  return createEnvironmentSecretResolver().resolve(secretRef);
 }

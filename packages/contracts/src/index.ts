@@ -15,6 +15,10 @@ export type {
   WorkspaceSummary,
 } from './identity.js';
 export type {
+  ChatMessageInput,
+  ChatMessageRole,
+  ChatRequest,
+  ChatResponse,
   ModelConnectionInput,
   ModelConnectionListResponse,
   ModelConnectionStatus,

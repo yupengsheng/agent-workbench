@@ -7,7 +7,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, desc, eq } from 'drizzle-orm';
 import {
   createDeepSeekClient,
-  createEnvironmentSecretResolver,
   ModelRequestError,
   OpenAICompatibleModelClient,
 } from '@agent-workbench/runtime';
@@ -15,7 +14,7 @@ import type { DatabaseHandle } from '../../db/client.js';
 import { auditRecords, modelConnections } from '../../db/schema.js';
 import { getAuthenticatedUser } from '../identity/service.js';
 import { canManageWorkspace, getWorkspaceAccess } from '../workspaces/access.js';
-import { decryptModelSecret, encryptModelSecret, getModelSecretKey } from './secrets.js';
+import { encryptModelSecret, getModelSecretKey, resolveModelSecret } from './secrets.js';
 
 interface WorkspaceParams {
   workspaceId: string;
@@ -512,12 +511,12 @@ export async function registerModelRoutes(
       if (connection.secretRef === 'managed') {
         try {
           getModelSecretKey();
-          apiKey = decryptModelSecret(connection.secretCiphertext);
+          apiKey = await resolveModelSecret(connection.secretRef, connection.secretCiphertext);
         } catch {
           return secretStoreUnavailable(reply);
         }
       } else {
-        apiKey = await createEnvironmentSecretResolver().resolve(connection.secretRef);
+        apiKey = await resolveModelSecret(connection.secretRef, connection.secretCiphertext);
       }
       if (!apiKey) {
         return reply.code(400).send({

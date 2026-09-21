@@ -16,6 +16,7 @@ import {
   logout,
 } from './lib/api';
 import ModelConnectionsPanel from './features/admin/ModelConnectionsPanel.vue';
+import ChatPanel from './features/user/ChatPanel.vue';
 
 type Route = 'user' | 'admin';
 type LoadState = 'loading' | 'ready' | 'error';
@@ -265,28 +266,23 @@ onMounted(async () => {
               @changed="loadWorkspaceData(selectedWorkspaceId)"
           /></template>
           <template v-else
-            ><section class="run-launcher">
-              <p class="eyebrow">THINK · ACT · OBSERVE</p>
-              <h3>描述你想完成的目标</h3>
-              <textarea
-                placeholder="例如：分析当前工作区的认证模块并生成一份带来源的技术报告。"
-                rows="5"
-              ></textarea>
-              <div class="launcher-footer">
-                <span class="muted">只读任务 · 服务端执行 · 过程可追溯</span
-                ><button class="primary-button" disabled>提交任务（M2）</button>
-              </div>
-            </section>
+            ><ChatPanel :workspace-id="selectedWorkspaceId" :models="models" />
             <div class="stat-grid">
+              <article>
+                <span>可用模型</span
+                ><strong>{{
+                  models.filter((model) => model.status === 'active' && model.secretConfigured)
+                    .length
+                }}</strong
+                ><small>由管理员配置并启用</small>
+              </article>
               <article>
                 <span>可用 Agent</span><strong>{{ agents.length }}</strong
                 ><small>从管理员发布的版本中选择</small>
               </article>
               <article>
-                <span>待审批</span><strong>0</strong><small>受控动作将在 M3 开放</small>
-              </article>
-              <article>
-                <span>通道通知</span><strong>—</strong><small>可从飞书接收结果</small>
+                <span>执行模式</span><strong>Chat</strong
+                ><small>TAO 任务执行将在后续阶段接入</small>
               </article>
             </div></template
           >

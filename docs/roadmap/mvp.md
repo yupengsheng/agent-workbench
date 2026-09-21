@@ -16,7 +16,7 @@
 
 ## M1：身份与配置基础
 
-当前进度：已落地 PostgreSQL 连接边界、首个身份/工作空间/模型连接/Agent 版本/审计迁移、数据库就绪检查、本地账号会话、Workspace membership、配置 API 和基础权限边界；真实模型密钥解析、模型能力测试、Run 执行和通道入口尚未完成。
+当前进度：已落地 PostgreSQL 连接边界、首个身份/工作空间/模型连接/Agent 版本/审计迁移、数据库就绪检查、本地账号会话、Workspace membership、配置 API、C 端同步对话和基础权限边界；Run 执行和通道入口尚未完成。
 
 - [x] 接入 PostgreSQL，建立迁移和数据库连接验证。
 - [x] 本地账号、Argon2id 密码哈希、HttpOnly 会话管理；无硬编码默认生产密码。
@@ -35,7 +35,9 @@
 
 入口范围：用户工作台 `/app` 先服务 Run 提交和过程查看；管理员控制台 `/admin` 与 Feishu 通道先完成只读配置/通知能力，写入和审批随 M3 进入。
 
-- [ ] Session、Run、Step、Artifact 数据模型。
+- [x] C 端选择 workspace 模型并进行同步多轮对话。
+
+- [ ] Session、Run、Step、Artifact 数据模型（当前 Chat 历史只保存在浏览器会话）。
 - [ ] Runner 领取/心跳/租约与明确失败状态。
 - [ ] 可注入模型、工具和持久化的 TAO 循环。
 - [ ] 文件读取/搜索工具，工作区真实路径检查。

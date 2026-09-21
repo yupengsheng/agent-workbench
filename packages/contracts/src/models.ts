@@ -40,3 +40,25 @@ export interface ModelConnectionTestResponse {
   usage: Record<string, number>;
   testedAt: string;
 }
+
+export type ChatMessageRole = 'user' | 'assistant';
+
+export interface ChatMessageInput {
+  role: ChatMessageRole;
+  content: string;
+}
+
+export interface ChatRequest {
+  modelConnectionId: string;
+  messages: ChatMessageInput[];
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface ChatResponse {
+  message: ChatMessageInput;
+  provider: string;
+  model: string;
+  finishReason: string | null;
+  usage: Record<string, number>;
+}

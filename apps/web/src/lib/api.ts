@@ -1,6 +1,8 @@
 import type {
   AgentListResponse,
   AuthResponse,
+  ChatRequest,
+  ChatResponse,
   HealthResponse,
   ModelConnectionInput,
   ModelConnectionListResponse,
@@ -117,4 +119,12 @@ export function getAgents(workspaceId: string): Promise<AgentListResponse> {
   return readJson<AgentListResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/agents`,
   );
+}
+
+export function chatWithModel(workspaceId: string, input: ChatRequest): Promise<ChatResponse> {
+  return readJson<ChatResponse>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/chat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
 }

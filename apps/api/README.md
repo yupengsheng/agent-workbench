@@ -4,6 +4,8 @@
 
 当前实现 `GET /healthz` 与 `GET /api/v1/health` 进程存活检查，以及检查数据库依赖的 `GET /readyz` 与 `GET /api/v1/ready`。配置 `DATABASE_URL` 后先执行 `npm run db:migrate --workspace @agent-workbench/api`。
 
+C 端同步对话通过 `POST /api/v1/workspaces/:workspaceId/chat` 提供。请求携带当前 workspace 中已启用的 `modelConnectionId` 和最多 40 条用户/助手消息；API 在服务端解析模型密钥并调用 `ModelPort`，浏览器只收到助手回复、模型名称和用量摘要。成员可以使用对话，模型连接仍按 workspace 隔离；SSE 流式输出、Run/Step 持久化和 TAO 工具执行留在后续 M2 迭代。
+
 M1 提供本地账号和 Workspace 基础接口：`POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`GET /api/v1/auth/me`、`GET /api/v1/workspaces` 与 `POST /api/v1/workspaces`。登录会话只以哈希形式保存到数据库，浏览器使用 HttpOnly Cookie；密码使用标准 Argon2id 编码格式，通过 `hash-wasm` 的 WASM 实现计算，避免部署时依赖原生编译工具链；服务端不会向前端返回密码或模型密钥。
 
 模型连接按工作空间隔离：`GET /api/v1/workspaces/:workspaceId/model-connections` 对成员提供脱敏列表，`POST` 和 `PATCH` 只允许 owner/admin。管理员可以通过 `secret` 字段提交模型 API Key；服务端使用 `MODEL_SECRET_ENCRYPTION_KEY` 配置的 AES-256-GCM 主密钥加密保存，密钥只在服务端测试或 Runner 调用时解密，永不通过 API 返回。部署也可以继续使用 `secretRef` 的 `none`、`env:VARIABLE_NAME` 或 `secret:PATH` 引用模式；响应只返回 `secretConfigured` 布尔值。连接还保存无凭据的 `baseUrl` 和测试状态；`POST /api/v1/workspaces/:workspaceId/model-connections/:connectionId/test` 由 owner/admin 触发服务端测试，失败原因截断后落库并审计。模型连接的创建、修改会与管理审计在同一数据库事务中写入。
