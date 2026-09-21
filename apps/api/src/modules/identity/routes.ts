@@ -28,7 +28,7 @@ function unavailable(reply: FastifyReply) {
 
 function unauthorized(reply: FastifyReply) {
   return reply.code(401).send({
-    error: { code: 'unauthorized', message: '邮箱或密码错误' },
+    error: { code: 'unauthorized', message: '账号或密码错误' },
   });
 }
 
@@ -65,7 +65,7 @@ export async function registerIdentityRoutes(
     const body = parseLoginBody(request.body);
     if (!body) {
       return reply.code(400).send({
-        error: { code: 'invalid_request', message: 'email 和 password 为必填项' },
+        error: { code: 'invalid_request', message: '账号和密码为必填项' },
       });
     }
 

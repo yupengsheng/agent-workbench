@@ -54,6 +54,18 @@ npm run admin:init --workspace @agent-workbench/api
 unset ADMIN_PASSWORD
 ```
 
+如需在开发测试环境使用约定账号 `admin / admin`，必须显式打开临时弱凭据开关，并将账号写成 `admin`：
+
+```bash
+NODE_ENV=development \
+ALLOW_WEAK_ADMIN_PASSWORD=true \
+ADMIN_EMAIL=admin \
+ADMIN_PASSWORD=admin \
+npm run admin:init --workspace @agent-workbench/api
+```
+
+该开关只允许开发环境初始化这组弱凭据，生产部署不要设置 `ALLOW_WEAK_ADMIN_PASSWORD`；生产环境继续使用合法邮箱和至少 12 位随机密码。
+
 初始化命令只接受空用户库，密码使用 Argon2id 哈希保存；已有用户时会拒绝执行。登录后可通过 `GET /api/v1/workspaces` 查询成员关系，使用 `POST /api/v1/workspaces` 创建并自动成为新空间 owner。
 
 DeepSeek 连接使用 `secretRef: "env:DEEPSEEK_API_KEY"`，API 只在服务端测试或 Runner 启动时解析该变量。不要把 `DEEPSEEK_API_KEY` 写入 `.env.example`、前端变量、模型连接响应或日志；连通性测试接口只返回状态、模型和用量摘要。

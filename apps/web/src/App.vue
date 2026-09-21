@@ -30,7 +30,7 @@ const selectedWorkspaceId = ref('');
 const models = ref<ModelConnectionListResponse['connections']>([]);
 const agents = ref<AgentListResponse['agents']>([]);
 const dataError = ref('');
-const email = ref('');
+const account = ref('');
 const password = ref('');
 const loginPending = ref(false);
 const logoutPending = ref(false);
@@ -91,7 +91,7 @@ async function submitLogin() {
   loginPending.value = true;
   authError.value = '';
   try {
-    const response = await login(email.value, password.value);
+    const response = await login(account.value, password.value);
     currentUser.value = response.user;
     const workspaceResponse = await getWorkspaces();
     workspaces.value = workspaceResponse.workspaces;
@@ -186,12 +186,12 @@ onMounted(async () => {
             使用本地账号进入 {{ route === 'admin' ? '管理员控制台' : '用户工作台' }}。
           </p>
           <label
-            >邮箱<input
-              v-model="email"
-              type="email"
+            >账号<input
+              v-model="account"
+              type="text"
               autocomplete="username"
               required
-              placeholder="you@example.com" /></label
+              placeholder="admin 或 you@example.com" /></label
           ><label
             >密码<input
               v-model="password"
@@ -204,7 +204,7 @@ onMounted(async () => {
           <button class="primary-button" type="submit" :disabled="loginPending">
             {{ loginPending ? '登录中…' : '登录' }}
           </button>
-          <p class="form-hint">管理员首次账号由部署命令创建，不使用内置默认密码。</p>
+          <p class="form-hint">管理员账号由部署命令创建；生产环境请使用强密码。</p>
         </form>
       </section>
 

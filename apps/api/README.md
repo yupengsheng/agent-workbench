@@ -20,6 +20,16 @@ ADMIN_PASSWORD='use-a-random-password-with-12-or-more-characters' \
 npm run admin:init --workspace @agent-workbench/api
 ```
 
+开发测试环境可以显式启用临时账号 `admin / admin`。这组弱凭据只在 `NODE_ENV=development` 且设置 `ALLOW_WEAK_ADMIN_PASSWORD=true` 时被初始化命令接受；生产环境不要设置该开关：
+
+```bash
+NODE_ENV=development \
+ALLOW_WEAK_ADMIN_PASSWORD=true \
+ADMIN_EMAIL=admin \
+ADMIN_PASSWORD=admin \
+npm run admin:init --workspace @agent-workbench/api
+```
+
 命令要求数据库中尚无用户，成功后创建管理员、默认 Workspace 及 owner membership；不会覆盖已有账号，也不接受命令行密码参数。密码应通过临时环境注入，使用后立即从 shell 历史和 CI 日志中清除。
 
 业务按领域放进 `src/modules/<domain>/`。首批领域为 `identity`、`agents`、`models`、`runs`、`approvals`、`audit`，在实现对应需求时创建。每个领域按需要拆分 routes、schema、service、repository；禁止 route 直接运行 Shell 或拼接模型请求。

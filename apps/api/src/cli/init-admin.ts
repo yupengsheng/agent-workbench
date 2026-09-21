@@ -13,11 +13,19 @@ const password = process.env.ADMIN_PASSWORD ?? '';
 const displayName = (process.env.ADMIN_DISPLAY_NAME ?? '管理员').trim();
 const workspaceName = (process.env.ADMIN_WORKSPACE_NAME ?? '默认工作空间').trim();
 const workspaceSlug = (process.env.ADMIN_WORKSPACE_SLUG ?? 'default').trim().toLowerCase();
+const allowDevelopmentCredentials =
+  process.env.NODE_ENV === 'development' && process.env.ALLOW_WEAK_ADMIN_PASSWORD === 'true';
+const isDevelopmentUsername = allowDevelopmentCredentials && email === 'admin';
 
-if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 320) {
-  throw new Error('ADMIN_EMAIL must be a valid email address');
+if ((!/^\S+@\S+\.\S+$/.test(email) && !isDevelopmentUsername) || email.length > 320) {
+  throw new Error(
+    'ADMIN_EMAIL must be a valid email address (or "admin" with NODE_ENV=development and ALLOW_WEAK_ADMIN_PASSWORD=true)',
+  );
 }
-if (password.length < 12 || password.length > 1024) {
+if (
+  (password.length < 12 && !(allowDevelopmentCredentials && password === 'admin')) ||
+  password.length > 1024
+) {
   throw new Error('ADMIN_PASSWORD must contain 12 to 1024 characters');
 }
 if (!displayName || displayName.length > 120) {
