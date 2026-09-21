@@ -6,6 +6,12 @@
 
 M1 提供本地账号和 Workspace 基础接口：`POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`GET /api/v1/auth/me`、`GET /api/v1/workspaces` 与 `POST /api/v1/workspaces`。登录会话只以哈希形式保存到数据库，浏览器使用 HttpOnly Cookie；密码使用标准 Argon2id 编码格式，通过 `hash-wasm` 的 WASM 实现计算，避免部署时依赖原生编译工具链；服务端不会向前端返回密码或模型密钥。
 
+模型连接按工作空间隔离：`GET /api/v1/workspaces/:workspaceId/model-connections` 对成员提供脱敏列表，`POST` 和 `PATCH` 只允许 owner/admin。请求中的 `secretRef` 仅接受 `none`、`env:VARIABLE_NAME` 或 `secret:PATH` 引用，平台不接受原始模型密钥；响应只返回 `secretConfigured` 布尔值。模型连接的创建、修改会与管理审计在同一数据库事务中写入。
+
+owner/admin 可通过 `GET /api/v1/workspaces/:workspaceId/audit-records?limit=50&offset=0` 查询管理审计。接口使用分页快照并对可能出现的 secret、token、password、credential 和 API key 字段脱敏；审计历史没有修改或删除接口。
+
+Agent 配置按版本保存：`GET /api/v1/workspaces/:workspaceId/agents` 查询列表，`POST /api/v1/workspaces/:workspaceId/agents` 创建带 draft v1 的 Agent，`POST /api/v1/workspaces/:workspaceId/agents/:agentId/versions` 创建后续草稿，`POST /api/v1/workspaces/:workspaceId/agents/:agentId/versions/:versionId/publish` 发布版本。只有 owner/admin 可以写入；发布会归档原 published 版本并更新 Agent 当前版本。配置限制为最多 64 KiB 的 JSON 对象，拒绝 secret、token、password、credential 和 API key 字段，并校验 `modelConnectionId` 必须属于当前工作空间且处于 active 状态。
+
 首次初始化管理员时，先完成迁移，再通过环境变量运行一次：
 
 ```bash
