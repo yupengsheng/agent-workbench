@@ -120,6 +120,24 @@ function parseBaseUrl(value: unknown, provider: string): string | undefined {
     const url = new URL(candidate);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined;
     if (url.username || url.password || url.search || url.hash) return undefined;
+    const hostname = url.hostname.toLowerCase();
+    const blockedHost =
+      hostname === 'localhost' ||
+      hostname === 'metadata.google.internal' ||
+      hostname === 'instance-data' ||
+      hostname === '169.254.169.254' ||
+      hostname === '100.100.100.200' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      hostname.startsWith('127.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('169.254.') ||
+      hostname.endsWith('.local');
+    if (blockedHost) return undefined;
+    if (url.protocol === 'http:' && process.env.ALLOW_INSECURE_MODEL_URLS !== 'true') {
+      return undefined;
+    }
     return url.toString().replace(/\/$/, '');
   } catch {
     return undefined;
