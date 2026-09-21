@@ -110,6 +110,6 @@ jobs:
             "$GITHUB_SHA"
           workbench exec \
             --instance-id "$WORKBENCH_INSTANCE_ID" \
-            --region "${WORKBENCH_REGION:-cn-hangzhou}" \
+            --region "${WORKBENCH_REGION:-cn-shanghai}" \
             --timeout 1800 \
             --command "$remote_command"
