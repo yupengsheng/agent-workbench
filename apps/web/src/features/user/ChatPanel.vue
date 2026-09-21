@@ -137,9 +137,7 @@ async function sendMessage() {
           @keydown.meta.enter.prevent="sendMessage"
         ></textarea>
         <div class="chat-composer-footer">
-          <span class="muted"
-            >{{ selectedModel?.name }} · 服务端调用 · 不会把 API Key 发送给模型</span
-          >
+          <span class="muted">{{ selectedModel?.name }} · 服务端调用 · 浏览器不会接触 API Key</span>
           <button class="compact-primary" type="submit" :disabled="pending || !draft.trim()">
             {{ pending ? '发送中…' : '发送' }}
           </button>
