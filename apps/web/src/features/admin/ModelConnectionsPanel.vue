@@ -320,7 +320,10 @@ function formatDate(value: string | null) {
             maxlength="4096"
             :placeholder="editingId ? '留空表示保持当前密钥' : '输入模型 API Key'"
           />
-          <small>密钥通过 TLS 发送，并使用服务端主密钥加密保存；编辑时留空表示保持当前密钥。</small>
+          <small
+            >生产环境请通过 HTTPS 提交密钥；当前测试地址是 HTTP，请先配置
+            HTTPS。服务端会用主密钥加密保存，编辑时留空表示保持当前密钥。</small
+          >
         </label>
       </div>
 
