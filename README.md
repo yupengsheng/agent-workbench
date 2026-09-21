@@ -2,7 +2,7 @@
 
 可私有化部署的多 Agent 工作台。目标是统一管理 Agent、模型、用户与审计，通过 Think-Act-Observe 引擎执行文件、命令、网页和子任务操作。
 
-**当前阶段：G0 → M1 持久化边界。** 已提供可运行的 Vue Web 首页、Fastify 健康检查 API、PostgreSQL 迁移与就绪检查、Apache-2.0 许可证、技术选型/架构/阶段门槛文档、浏览器交互原型和 Figma 生成插件。身份认证、资源权限、模型连接 API、模型调用、任务引擎、审批和审计写入仍在建设。
+**当前阶段：M2 单 Agent 只读闭环建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。Runner、TAO 工具循环、实时事件、审批和审计扩展仍按路线建设。
 
 ## 快速开始
 

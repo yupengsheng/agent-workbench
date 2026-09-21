@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { ChatMessageInput, ModelConnectionSummary } from '@agent-workbench/contracts';
-import { chatWithModel } from '../../lib/api';
+import { chatWithModel, getSession } from '../../lib/api';
 
 const props = defineProps<{
   workspaceId: string;
@@ -12,6 +12,7 @@ const activeModels = computed(() =>
   props.models.filter((model) => model.status === 'active' && model.secretConfigured),
 );
 const selectedModelId = ref('');
+const sessionId = ref('');
 const messages = ref<ChatMessageInput[]>([]);
 const draft = ref('');
 const pending = ref(false);
@@ -32,6 +33,37 @@ const selectedModel = computed(() =>
   activeModels.value.find((model) => model.id === selectedModelId.value),
 );
 
+const sessionStorageKey = computed(() => `agent-workbench:session:${props.workspaceId}`);
+
+function isMessage(value: unknown): value is ChatMessageInput {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    (candidate.role === 'user' || candidate.role === 'assistant') &&
+    typeof candidate.content === 'string' &&
+    candidate.content.length > 0
+  );
+}
+
+async function restoreSession() {
+  if (!props.workspaceId) return;
+  const storedSessionId = window.sessionStorage.getItem(sessionStorageKey.value);
+  if (!storedSessionId) return;
+  try {
+    const detail = await getSession(props.workspaceId, storedSessionId);
+    const latestRun = detail.runs.at(-1);
+    const savedMessages = latestRun?.run.input.messages;
+    const restored = Array.isArray(savedMessages) ? savedMessages.filter(isMessage) : [];
+    const output = latestRun?.run.output?.message;
+    if (isMessage(output) && output.role === 'assistant') restored.push(output);
+    sessionId.value = detail.session.id;
+    messages.value = restored;
+    await scrollTranscript();
+  } catch {
+    window.sessionStorage.removeItem(sessionStorageKey.value);
+  }
+}
+
 async function scrollTranscript() {
   await nextTick();
   if (transcript.value) transcript.value.scrollTop = transcript.value.scrollHeight;
@@ -40,6 +72,8 @@ async function scrollTranscript() {
 function clearConversation() {
   if (pending.value) return;
   messages.value = [];
+  sessionId.value = '';
+  window.sessionStorage.removeItem(sessionStorageKey.value);
   draft.value = '';
   error.value = '';
 }
@@ -64,8 +98,11 @@ async function sendMessage() {
     const response = await chatWithModel(props.workspaceId, {
       modelConnectionId: selectedModelId.value,
       messages: history,
+      ...(sessionId.value ? { sessionId: sessionId.value } : {}),
       maxTokens: 1024,
     });
+    sessionId.value = response.sessionId;
+    window.sessionStorage.setItem(sessionStorageKey.value, response.sessionId);
     messages.value.push(response.message);
     await scrollTranscript();
   } catch (requestError) {
@@ -74,6 +111,10 @@ async function sendMessage() {
     pending.value = false;
   }
 }
+
+onMounted(() => {
+  void restoreSession();
+});
 </script>
 
 <template>
@@ -82,7 +123,7 @@ async function sendMessage() {
       <div>
         <p class="eyebrow">MODEL CHAT</p>
         <h3>和 AI 对话</h3>
-        <p class="section-description">当前为同步对话，消息只保存在本次浏览器会话中。</p>
+        <p class="section-description">当前为同步对话，会话和每次运行记录保存在服务端。</p>
       </div>
       <button v-if="messages.length" type="button" class="quiet-button" @click="clearConversation">
         清空对话

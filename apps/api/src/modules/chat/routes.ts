@@ -7,7 +7,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import type { DatabaseHandle } from '../../db/client.js';
-import { modelConnections } from '../../db/schema.js';
+import { chatSessions, modelConnections, runEvents, runs, runSteps } from '../../db/schema.js';
 import { getAuthenticatedUser } from '../identity/service.js';
 import { getWorkspaceAccess } from '../workspaces/access.js';
 import { getModelSecretKey, resolveModelSecret } from '../models/secrets.js';
@@ -18,6 +18,7 @@ interface WorkspaceParams {
 
 interface ChatBody {
   modelConnectionId: string;
+  sessionId?: string;
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   temperature?: number;
   maxTokens?: number;
@@ -67,6 +68,9 @@ function parseChatBody(body: unknown): ChatBody | undefined {
   if (typeof candidate.modelConnectionId !== 'string' || !isUuid(candidate.modelConnectionId)) {
     return undefined;
   }
+  if (candidate.sessionId !== undefined) {
+    if (typeof candidate.sessionId !== 'string' || !isUuid(candidate.sessionId)) return undefined;
+  }
   if (
     !Array.isArray(candidate.messages) ||
     candidate.messages.length < 1 ||
@@ -112,6 +116,7 @@ function parseChatBody(body: unknown): ChatBody | undefined {
   }
   return {
     modelConnectionId: candidate.modelConnectionId,
+    ...(candidate.sessionId === undefined ? {} : { sessionId: candidate.sessionId }),
     messages,
     ...(temperature === undefined ? {} : { temperature }),
     ...(maxTokens === undefined ? {} : { maxTokens }),
@@ -178,6 +183,8 @@ export async function registerChatRoutes(
         .limit(1);
       if (!connection) return connectionUnavailable(reply);
 
+      // Resolve and validate the server-side secret before persisting a run.
+      // Configuration errors should not leave an orphaned run in `running`.
       let apiKey: string | undefined;
       try {
         if (connection.secretRef === 'managed') getModelSecretKey();
@@ -200,6 +207,89 @@ export async function registerChatRoutes(
               defaultModel: connection.modelIdentifier,
             });
 
+      let sessionId = body.sessionId;
+      if (sessionId) {
+        const [existingSession] = await context.database.db
+          .select({ id: chatSessions.id })
+          .from(chatSessions)
+          .where(
+            and(
+              eq(chatSessions.id, sessionId),
+              eq(chatSessions.workspaceId, request.params.workspaceId),
+              eq(chatSessions.ownerUserId, context.user.id),
+              eq(chatSessions.status, 'active'),
+            ),
+          )
+          .limit(1);
+        if (!existingSession) {
+          return reply
+            .code(404)
+            .send({ error: { code: 'session_not_found', message: '对话不存在' } });
+        }
+      }
+
+      const firstUserMessage = body.messages.find((message) => message.role === 'user');
+      const sessionTitle = firstUserMessage?.content.slice(0, 80) || '新对话';
+      const startedAt = new Date();
+      const execution = await context.database.db.transaction(async (tx) => {
+        if (!sessionId) {
+          const [createdSession] = await tx
+            .insert(chatSessions)
+            .values({
+              workspaceId: request.params.workspaceId,
+              ownerUserId: context.user.id,
+              title: sessionTitle,
+            })
+            .returning({ id: chatSessions.id });
+          if (!createdSession) throw new Error('session insert returned no row');
+          sessionId = createdSession.id;
+        }
+
+        const [run] = await tx
+          .insert(runs)
+          .values({
+            workspaceId: request.params.workspaceId,
+            sessionId,
+            triggerUserId: context.user.id,
+            modelConnectionId: connection.id,
+            status: 'running',
+            input: { messages: body.messages },
+            startedAt,
+          })
+          .returning({ id: runs.id });
+        if (!run) throw new Error('run insert returned no row');
+
+        const [step] = await tx
+          .insert(runSteps)
+          .values({
+            runId: run.id,
+            sequence: 1,
+            kind: 'model',
+            status: 'running',
+            input: { messages: body.messages, modelConnectionId: connection.id },
+            startedAt,
+          })
+          .returning({ id: runSteps.id });
+        if (!step) throw new Error('run step insert returned no row');
+
+        await tx.insert(runEvents).values([
+          {
+            runId: run.id,
+            sequence: 1,
+            type: 'run.started',
+            payload: { modelConnectionId: connection.id },
+          },
+          {
+            runId: run.id,
+            sequence: 2,
+            type: 'step.started',
+            stepId: step.id,
+            payload: { kind: 'model' },
+          },
+        ]);
+        return { sessionId, runId: run.id, stepId: step.id };
+      });
+
       try {
         const result = await client.complete({
           messages: body.messages,
@@ -207,6 +297,9 @@ export async function registerChatRoutes(
           maxTokens: body.maxTokens ?? 1024,
         });
         const response: ChatResponse = {
+          sessionId: execution.sessionId,
+          runId: execution.runId,
+          stepId: execution.stepId,
           message: {
             role: 'assistant',
             content: result.message.content ?? '',
@@ -226,13 +319,95 @@ export async function registerChatRoutes(
               : { totalTokens: result.usage.totalTokens }),
           },
         };
+        const completedAt = new Date();
+        await context.database.db.transaction(async (tx) => {
+          await tx
+            .update(runSteps)
+            .set({
+              status: 'succeeded',
+              output: { message: response.message },
+              usage: response.usage,
+              completedAt,
+            })
+            .where(eq(runSteps.id, execution.stepId));
+          await tx
+            .update(runs)
+            .set({
+              status: 'succeeded',
+              output: { message: response.message },
+              completedAt,
+              updatedAt: completedAt,
+            })
+            .where(eq(runs.id, execution.runId));
+          await tx
+            .update(chatSessions)
+            .set({ updatedAt: completedAt })
+            .where(eq(chatSessions.id, execution.sessionId));
+          await tx.insert(runEvents).values([
+            {
+              runId: execution.runId,
+              sequence: 3,
+              type: 'step.completed',
+              stepId: execution.stepId,
+              payload: { status: 'succeeded', usage: response.usage },
+            },
+            {
+              runId: execution.runId,
+              sequence: 4,
+              type: 'run.succeeded',
+              payload: { model: response.model, provider: response.provider },
+            },
+          ]);
+        });
         return reply.send(response);
       } catch (error) {
         const modelError = error instanceof ModelRequestError ? error : undefined;
+        const safeMessage = modelError?.message ?? '模型请求失败，请稍后重试';
+        const completedAt = new Date();
+        await context.database.db.transaction(async (tx) => {
+          await tx
+            .update(runSteps)
+            .set({
+              status: 'failed',
+              errorCode: 'model_request_failed',
+              errorMessage: safeMessage,
+              completedAt,
+            })
+            .where(eq(runSteps.id, execution.stepId));
+          await tx
+            .update(runs)
+            .set({
+              status: 'failed',
+              errorCode: 'model_request_failed',
+              errorMessage: safeMessage,
+              completedAt,
+              updatedAt: completedAt,
+            })
+            .where(eq(runs.id, execution.runId));
+          await tx
+            .update(chatSessions)
+            .set({ updatedAt: completedAt })
+            .where(eq(chatSessions.id, execution.sessionId));
+          await tx.insert(runEvents).values([
+            {
+              runId: execution.runId,
+              sequence: 3,
+              type: 'step.failed',
+              stepId: execution.stepId,
+              payload: { status: 'failed', retryable: modelError?.retryable ?? true },
+            },
+            {
+              runId: execution.runId,
+              sequence: 4,
+              type: 'run.failed',
+              payload: { code: 'model_request_failed' },
+            },
+          ]);
+        });
         return reply.code(502).send({
           error: {
             code: 'model_request_failed',
-            message: modelError?.message ?? '模型请求失败，请稍后重试',
+            message: safeMessage,
             retryable: modelError?.retryable ?? true,
           },
         });

@@ -50,12 +50,17 @@ export interface ChatMessageInput {
 
 export interface ChatRequest {
   modelConnectionId: string;
+  /** Continue an existing conversation owned by the current user. */
+  sessionId?: string;
   messages: ChatMessageInput[];
   temperature?: number;
   maxTokens?: number;
 }
 
 export interface ChatResponse {
+  sessionId: string;
+  runId: string;
+  stepId: string;
   message: ChatMessageInput;
   provider: string;
   model: string;

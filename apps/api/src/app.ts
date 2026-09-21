@@ -8,6 +8,7 @@ import { registerIdentityRoutes } from './modules/identity/routes.js';
 import { registerModelRoutes } from './modules/models/routes.js';
 import { registerWorkspaceRoutes } from './modules/workspaces/routes.js';
 import { registerChatRoutes } from './modules/chat/routes.js';
+import { registerRunRoutes } from './modules/runs/routes.js';
 
 export interface AppDependencies {
   database: DatabaseHandle | undefined;
@@ -27,6 +28,7 @@ export function createApp(
     await registerModelRoutes(instance, dependencies.database);
     await registerWorkspaceRoutes(instance, dependencies.database);
     await registerChatRoutes(instance, dependencies.database);
+    await registerRunRoutes(instance, dependencies.database);
   });
   return app;
 }

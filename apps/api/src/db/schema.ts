@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
 import {
   integer,
+  index,
   jsonb,
   pgEnum,
   pgTable,
@@ -25,6 +26,22 @@ export const agentVersionStatus = pgEnum('agent_version_status', [
   'draft',
   'published',
   'archived',
+]);
+export const chatSessionStatus = pgEnum('chat_session_status', ['active', 'archived']);
+export const runStatus = pgEnum('run_status', [
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+  'cancelled',
+]);
+export const runStepKind = pgEnum('run_step_kind', ['model', 'tool']);
+export const runStepStatus = pgEnum('run_step_status', [
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+  'cancelled',
 ]);
 
 const auditTimestamps = {
@@ -158,6 +175,120 @@ export const agentVersions = pgTable(
   (table) => [uniqueIndex('agent_versions_agent_version_idx').on(table.agentId, table.version)],
 );
 
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ownerUserId: uuid('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('新对话'),
+    status: chatSessionStatus('status').notNull().default('active'),
+    ...auditTimestamps,
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('chat_sessions_workspace_owner_updated_at_idx').on(
+      table.workspaceId,
+      table.ownerUserId,
+      table.updatedAt,
+    ),
+  ],
+);
+
+export const runs = pgTable(
+  'runs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => chatSessions.id, { onDelete: 'cascade' }),
+    parentRunId: uuid('parent_run_id'),
+    triggerUserId: uuid('trigger_user_id')
+      .notNull()
+      .references(() => users.id),
+    modelConnectionId: uuid('model_connection_id').references(() => modelConnections.id, {
+      onDelete: 'set null',
+    }),
+    status: runStatus('status').notNull().default('queued'),
+    input: jsonb('input').$type<Record<string, unknown>>().notNull().default({}),
+    output: jsonb('output').$type<Record<string, unknown> | null>(),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...auditTimestamps,
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('runs_workspace_created_at_idx').on(table.workspaceId, table.createdAt)],
+);
+
+export const runSteps = pgTable(
+  'run_steps',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    sequence: integer('sequence').notNull(),
+    kind: runStepKind('kind').notNull(),
+    status: runStepStatus('status').notNull().default('queued'),
+    input: jsonb('input').$type<Record<string, unknown>>().notNull().default({}),
+    output: jsonb('output').$type<Record<string, unknown> | null>(),
+    usage: jsonb('usage').$type<Record<string, number>>().notNull().default({}),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...auditTimestamps,
+  },
+  (table) => [uniqueIndex('run_steps_run_sequence_idx').on(table.runId, table.sequence)],
+);
+
+export const runEvents = pgTable(
+  'run_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    sequence: integer('sequence').notNull(),
+    type: text('type').notNull(),
+    stepId: uuid('step_id').references(() => runSteps.id, { onDelete: 'set null' }),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    ...auditTimestamps,
+  },
+  (table) => [uniqueIndex('run_events_run_sequence_idx').on(table.runId, table.sequence)],
+);
+
+export const artifacts = pgTable(
+  'artifacts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    contentType: text('content_type').notNull(),
+    storageRef: text('storage_ref').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    checksum: text('checksum'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    ...auditTimestamps,
+  },
+  (table) => [uniqueIndex('artifacts_run_name_idx').on(table.runId, table.name)],
+);
+
 export const auditRecords = pgTable('audit_records', {
   id: uuid('id').defaultRandom().primaryKey(),
   workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'set null' }),
@@ -174,12 +305,18 @@ export const workspaceRelations = relations(workspaces, ({ many }) => ({
   modelConnections: many(modelConnections),
   agents: many(agents),
   auditRecords: many(auditRecords),
+  sessions: many(sessions),
+  chatSessions: many(chatSessions),
+  runs: many(runs),
+  artifacts: many(artifacts),
 }));
 
 export const userRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
   sessions: many(sessions),
   auditRecords: many(auditRecords),
+  chatSessions: many(chatSessions),
+  runs: many(runs),
 }));
 
 export const sessionRelations = relations(sessions, ({ one }) => ({
@@ -200,6 +337,70 @@ export const agentVersionRelations = relations(agentVersions, ({ one }) => ({
   }),
 }));
 
+export const chatSessionRelations = relations(chatSessions, ({ one, many }) => ({
+  workspace: one(workspaces, {
+    fields: [chatSessions.workspaceId],
+    references: [workspaces.id],
+  }),
+  owner: one(users, {
+    fields: [chatSessions.ownerUserId],
+    references: [users.id],
+  }),
+  runs: many(runs),
+}));
+
+export const runRelations = relations(runs, ({ one, many }) => ({
+  workspace: one(workspaces, {
+    fields: [runs.workspaceId],
+    references: [workspaces.id],
+  }),
+  session: one(chatSessions, {
+    fields: [runs.sessionId],
+    references: [chatSessions.id],
+  }),
+  triggerUser: one(users, {
+    fields: [runs.triggerUserId],
+    references: [users.id],
+  }),
+  modelConnection: one(modelConnections, {
+    fields: [runs.modelConnectionId],
+    references: [modelConnections.id],
+  }),
+  steps: many(runSteps),
+  events: many(runEvents),
+  artifacts: many(artifacts),
+}));
+
+export const runStepRelations = relations(runSteps, ({ one, many }) => ({
+  run: one(runs, {
+    fields: [runSteps.runId],
+    references: [runs.id],
+  }),
+  events: many(runEvents),
+}));
+
+export const runEventRelations = relations(runEvents, ({ one }) => ({
+  run: one(runs, {
+    fields: [runEvents.runId],
+    references: [runs.id],
+  }),
+  step: one(runSteps, {
+    fields: [runEvents.stepId],
+    references: [runSteps.id],
+  }),
+}));
+
+export const artifactRelations = relations(artifacts, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [artifacts.workspaceId],
+    references: [workspaces.id],
+  }),
+  run: one(runs, {
+    fields: [artifacts.runId],
+    references: [runs.id],
+  }),
+}));
+
 export const schema = {
   users,
   workspaces,
@@ -208,5 +409,10 @@ export const schema = {
   modelConnections,
   agents,
   agentVersions,
+  chatSessions,
+  runs,
+  runSteps,
+  runEvents,
+  artifacts,
   auditRecords,
 };

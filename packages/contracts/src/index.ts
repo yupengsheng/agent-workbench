@@ -26,3 +26,15 @@ export type {
   ModelConnectionTestStatus,
   ModelConnectionTestResponse,
 } from './models.js';
+export type {
+  RunEventSummary,
+  RunStepKind,
+  RunStepStatus,
+  RunStepSummary,
+  RunStatus,
+  RunSummary,
+  SessionDetailResponse,
+  SessionListResponse,
+  SessionStatus,
+  SessionSummary,
+} from './runs.js';
