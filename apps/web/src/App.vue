@@ -15,6 +15,7 @@ import {
   login,
   logout,
 } from './lib/api';
+import ModelConnectionsPanel from './features/admin/ModelConnectionsPanel.vue';
 
 type Route = 'user' | 'admin';
 type LoadState = 'loading' | 'ready' | 'error';
@@ -255,29 +256,14 @@ onMounted(async () => {
                 <span>第三方通道</span><strong>0</strong><small>Feishu 适配器规划中</small>
               </article>
             </div>
-            <section class="data-card">
-              <div class="section-heading">
-                <h3>模型连接</h3>
-                <span>DeepSeek 优先</span>
-              </div>
-              <p v-if="models.length === 0" class="empty-state">
-                当前工作空间还没有模型连接，请先在 API 中登记 DeepSeek。
-              </p>
-              <div v-for="model in models" :key="model.id" class="data-row">
-                <div>
-                  <strong>{{ model.name }}</strong
-                  ><small>{{ model.provider }} · {{ model.modelIdentifier }}</small>
-                </div>
-                <span class="status-badge" :class="model.lastTestStatus">{{
-                  model.lastTestStatus === 'passed'
-                    ? '已验证'
-                    : model.lastTestStatus === 'failed'
-                      ? '测试失败'
-                      : '未测试'
-                }}</span>
-              </div>
-            </section></template
-          >
+            ><ModelConnectionsPanel
+              :workspace-id="selectedWorkspaceId"
+              :models="models"
+              :can-manage="
+                selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'
+              "
+              @changed="loadWorkspaceData(selectedWorkspaceId)"
+          /></template>
           <template v-else
             ><section class="run-launcher">
               <p class="eyebrow">THINK · ACT · OBSERVE</p>

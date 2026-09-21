@@ -2,7 +2,10 @@ import type {
   AgentListResponse,
   AuthResponse,
   HealthResponse,
+  ModelConnectionInput,
   ModelConnectionListResponse,
+  ModelConnectionSummary,
+  ModelConnectionTestResponse,
   WorkspaceListResponse,
 } from '@agent-workbench/contracts';
 
@@ -68,6 +71,45 @@ export function getWorkspaces(): Promise<WorkspaceListResponse> {
 export function getModelConnections(workspaceId: string): Promise<ModelConnectionListResponse> {
   return readJson<ModelConnectionListResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/model-connections`,
+  );
+}
+
+export function createModelConnection(
+  workspaceId: string,
+  input: ModelConnectionInput,
+): Promise<ModelConnectionSummary> {
+  return readJson<ModelConnectionSummary>(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/model-connections`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function updateModelConnection(
+  workspaceId: string,
+  connectionId: string,
+  input: Partial<ModelConnectionInput> & { status?: 'active' | 'disabled' },
+): Promise<ModelConnectionSummary> {
+  return readJson<ModelConnectionSummary>(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/model-connections/${encodeURIComponent(connectionId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function testModelConnection(
+  workspaceId: string,
+  connectionId: string,
+): Promise<ModelConnectionTestResponse> {
+  return readJson<ModelConnectionTestResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/model-connections/${encodeURIComponent(connectionId)}/test`,
+    { method: 'POST' },
   );
 }
 

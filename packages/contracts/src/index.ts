@@ -15,8 +15,10 @@ export type {
   WorkspaceSummary,
 } from './identity.js';
 export type {
+  ModelConnectionInput,
   ModelConnectionListResponse,
   ModelConnectionStatus,
   ModelConnectionSummary,
   ModelConnectionTestStatus,
+  ModelConnectionTestResponse,
 } from './models.js';

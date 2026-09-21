@@ -1,6 +1,6 @@
 # 模型提供商与自研模型路线
 
-状态：DeepSeek 适配器已在 `packages/runtime` 完成协议级 smoke 验证；API 模型连接管理和管理员触发的测试接口已实现；真实密钥解析、联网连通性测试和 Runner 调用尚未完成。
+状态：DeepSeek 适配器已在 `packages/runtime` 完成协议级 smoke 验证；API 模型连接管理、管理员配置页面和服务端测试接口已实现。真实联网测试需要在部署环境配置对应的 `env:NAME` 密钥引用；Runner 调用尚未接入。
 
 ## 选择比较
 

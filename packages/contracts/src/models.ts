@@ -19,3 +19,21 @@ export interface ModelConnectionSummary {
 export interface ModelConnectionListResponse {
   connections: ModelConnectionSummary[];
 }
+
+export interface ModelConnectionInput {
+  name: string;
+  provider: string;
+  modelIdentifier: string;
+  secretRef: string;
+  baseUrl: string;
+  capabilities: Record<string, boolean>;
+}
+
+export interface ModelConnectionTestResponse {
+  status: 'passed';
+  provider: string;
+  model: string;
+  finishReason: string | null;
+  usage: Record<string, number>;
+  testedAt: string;
+}
