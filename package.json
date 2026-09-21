@@ -19,7 +19,7 @@
     "figma:build": "npm run build --workspace @agent-workbench/figma-prototype",
     "figma:typecheck": "npm run typecheck --workspace @agent-workbench/figma-prototype",
     "build": "npm run design:sync && npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/runtime && npm run build --workspace @agent-workbench/api && npm run build --workspace @agent-workbench/web",
-    "typecheck": "npm run build --workspace @agent-workbench/contracts && npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/runtime && npm run typecheck --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm run figma:typecheck && npm run build"
