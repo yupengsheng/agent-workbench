@@ -16,20 +16,24 @@
 
 ## M1：身份与配置基础
 
-当前进度：已落地 PostgreSQL 连接边界、首个身份/工作空间/模型连接/Agent 版本/审计迁移、数据库就绪检查、本地账号会话和 Workspace membership 基础接口；模型密钥适配、模型能力测试、Agent 配置 API 和完整权限矩阵尚未完成。
+当前进度：已落地 PostgreSQL 连接边界、首个身份/工作空间/模型连接/Agent 版本/审计迁移、数据库就绪检查、本地账号会话、Workspace membership、配置 API 和基础权限边界；真实模型密钥解析、模型能力测试、Run 执行和通道入口尚未完成。
 
 - [x] 接入 PostgreSQL，建立迁移和数据库连接验证。
 - [x] 本地账号、Argon2id 密码哈希、HttpOnly 会话管理；无硬编码默认生产密码。
 - [x] 工作空间查询/创建、owner membership 与资源归属基础校验。
 - [x] 提供只允许空用户库执行的管理员初始化命令。
 - [x] 模型连接登记、Workspace 隔离、secretRef 引用和脱敏响应。
-- [ ] 接入环境/密钥系统解析和模型能力测试。
+- [x] ModelPort、DeepSeek OpenAI-compatible 适配器和自研兼容模型扩展边界。
+- [x] 模型连接 baseUrl、服务端环境密钥解析和管理员触发测试接口。
+- [ ] 配置真实 DeepSeek 密钥并完成模型能力测试。
 - [x] Agent 草稿、配置版本、模型连接归属校验和单版本发布。
 - [x] Workspace 创建、模型连接创建/修改的管理审计和只读查询。
 
 验收：管理员创建工作空间、账号、模型和 Agent；另一工作空间用户无法读取这些受限资源，浏览器与日志不出现真实密钥。
 
 ## M2：单 Agent 只读闭环
+
+入口范围：用户工作台 `/app` 先服务 Run 提交和过程查看；管理员控制台 `/admin` 与 Feishu 通道先完成只读配置/通知能力，写入和审批随 M3 进入。
 
 - [ ] Session、Run、Step、Artifact 数据模型。
 - [ ] Runner 领取/心跳/租约与明确失败状态。

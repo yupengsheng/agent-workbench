@@ -15,6 +15,11 @@ export const userStatus = pgEnum('user_status', ['active', 'disabled']);
 export const workspaceStatus = pgEnum('workspace_status', ['active', 'archived']);
 export const membershipRole = pgEnum('membership_role', ['owner', 'admin', 'member', 'viewer']);
 export const modelConnectionStatus = pgEnum('model_connection_status', ['active', 'disabled']);
+export const modelConnectionTestStatus = pgEnum('model_connection_test_status', [
+  'unknown',
+  'passed',
+  'failed',
+]);
 export const agentStatus = pgEnum('agent_status', ['active', 'archived']);
 export const agentVersionStatus = pgEnum('agent_version_status', [
   'draft',
@@ -95,8 +100,12 @@ export const modelConnections = pgTable(
     provider: text('provider').notNull(),
     modelIdentifier: text('model_identifier').notNull(),
     secretRef: text('secret_ref').notNull(),
+    baseUrl: text('base_url').notNull().default('https://api.deepseek.com'),
     capabilities: jsonb('capabilities').$type<Record<string, boolean>>().notNull().default({}),
     status: modelConnectionStatus('status').notNull().default('active'),
+    lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
+    lastTestStatus: modelConnectionTestStatus('last_test_status').notNull().default('unknown'),
+    lastTestError: text('last_test_error'),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),

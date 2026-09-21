@@ -18,7 +18,9 @@
 ```mermaid
 flowchart LR
   subgraph Experience[体验层]
-    Web[Vue 3 Web 工作台]
+    UserWeb[Vue 3 用户工作台]
+    AdminWeb[Vue 3 管理员控制台]
+    Channel[第三方通道适配器]
   end
 
   subgraph Control[控制面]
@@ -44,12 +46,16 @@ flowchart LR
   end
 
   subgraph Integrations[集成面]
-    Model[ModelPort / 供应商 SDK]
+    Model[ModelPort]
+    DeepSeek[DeepSeek 适配器]
+    SelfHosted[自研/私有模型适配器]
     OIDC[可选 OIDC IdP]
     MCP[可选 MCP / Skill]
   end
 
-  Web -->|REST 命令| API
+  UserWeb -->|REST / SSE| API
+  AdminWeb -->|REST / SSE| API
+  Channel -->|校验/去重后的命令| API
   API --> Identity
   API --> Config
   API --> Runs
@@ -60,10 +66,14 @@ flowchart LR
   DB --> Queue
   DB --> Outbox
   Outbox --> Events
-  Events -->|SSE + cursor| Web
+  Events -->|SSE + cursor| UserWeb
+  Events -->|SSE + cursor| AdminWeb
+  Events -->|异步通知| Channel
   Queue -->|claim / lease| Runner
   Runner --> Harness
   Harness --> Model
+  Model --> DeepSeek
+  Model --> SelfHosted
   Harness --> Policy
   Policy --> Sandbox
   Runner --> Artifact

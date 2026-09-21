@@ -5,6 +5,12 @@ import type {
 } from '@agent-workbench/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, desc, eq } from 'drizzle-orm';
+import {
+  createDeepSeekClient,
+  createEnvironmentSecretResolver,
+  ModelRequestError,
+  OpenAICompatibleModelClient,
+} from '@agent-workbench/runtime';
 import type { DatabaseHandle } from '../../db/client.js';
 import { auditRecords, modelConnections } from '../../db/schema.js';
 import { getAuthenticatedUser } from '../identity/service.js';
@@ -23,6 +29,7 @@ interface CreateConnectionBody {
   provider: string;
   modelIdentifier: string;
   secretRef: string;
+  baseUrl: string;
   capabilities?: Record<string, boolean>;
 }
 
@@ -30,6 +37,7 @@ interface UpdateConnectionBody {
   name?: string;
   modelIdentifier?: string;
   secretRef?: string;
+  baseUrl?: string;
   capabilities?: Record<string, boolean>;
   status?: ModelConnectionStatus;
 }
@@ -104,6 +112,20 @@ function parseProvider(value: unknown): string | undefined {
   return provider && /^[a-z][a-z0-9._-]*$/.test(provider) ? provider : undefined;
 }
 
+function parseBaseUrl(value: unknown, provider: string): string | undefined {
+  const candidate =
+    value === undefined && provider === 'deepseek' ? 'https://api.deepseek.com' : value;
+  if (typeof candidate !== 'string' || candidate.length > 512) return undefined;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined;
+    if (url.username || url.password || url.search || url.hash) return undefined;
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
 function parseCreateBody(body: unknown): CreateConnectionBody | undefined {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
   const candidate = body as Record<string, unknown>;
@@ -111,9 +133,11 @@ function parseCreateBody(body: unknown): CreateConnectionBody | undefined {
   const provider = parseProvider(candidate.provider);
   const modelIdentifier = parseText(candidate.modelIdentifier, 200);
   const secretRef = parseSecretRef(candidate.secretRef);
+  const baseUrl = provider ? parseBaseUrl(candidate.baseUrl, provider) : undefined;
   const capabilities = parseCapabilities(candidate.capabilities);
-  if (!name || !provider || !modelIdentifier || !secretRef || !capabilities) return undefined;
-  return { name, provider, modelIdentifier, secretRef, capabilities };
+  if (!name || !provider || !modelIdentifier || !secretRef || !baseUrl || !capabilities)
+    return undefined;
+  return { name, provider, modelIdentifier, secretRef, baseUrl, capabilities };
 }
 
 function parseUpdateBody(body: unknown): UpdateConnectionBody | undefined {
@@ -134,6 +158,11 @@ function parseUpdateBody(body: unknown): UpdateConnectionBody | undefined {
     const secretRef = parseSecretRef(candidate.secretRef);
     if (!secretRef) return undefined;
     result.secretRef = secretRef;
+  }
+  if ('baseUrl' in candidate) {
+    const baseUrl = parseBaseUrl(candidate.baseUrl, 'self-hosted');
+    if (!baseUrl) return undefined;
+    result.baseUrl = baseUrl;
   }
   if ('capabilities' in candidate) {
     const capabilities = parseCapabilities(candidate.capabilities);
@@ -160,9 +189,12 @@ function toSummary(row: {
   name: string;
   provider: string;
   modelIdentifier: string;
+  baseUrl: string;
   capabilities: Record<string, boolean>;
   status: ModelConnectionStatus;
   secretRef: string;
+  lastTestStatus: 'unknown' | 'passed' | 'failed';
+  lastTestedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): ModelConnectionSummary {
@@ -171,9 +203,12 @@ function toSummary(row: {
     name: row.name,
     provider: row.provider,
     modelIdentifier: row.modelIdentifier,
+    baseUrl: row.baseUrl,
     capabilities: row.capabilities,
     status: row.status,
     secretConfigured: row.secretRef !== 'none',
+    lastTestStatus: row.lastTestStatus,
+    lastTestedAt: row.lastTestedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -255,6 +290,7 @@ export async function registerModelRoutes(
               provider: body.provider,
               modelIdentifier: body.modelIdentifier,
               secretRef: body.secretRef,
+              baseUrl: body.baseUrl,
               capabilities: body.capabilities,
               createdBy: context.user.id,
             })
@@ -271,6 +307,7 @@ export async function registerModelRoutes(
               name: created.name,
               provider: created.provider,
               modelIdentifier: created.modelIdentifier,
+              baseUrl: created.baseUrl,
               secretConfigured: created.secretRef !== 'none',
             },
           });
@@ -347,6 +384,110 @@ export async function registerModelRoutes(
           });
         }
         throw error;
+      }
+    },
+  );
+
+  app.post(
+    '/api/v1/workspaces/:workspaceId/model-connections/:connectionId/test',
+    async (request: FastifyRequest<{ Params: ConnectionParams }>, reply) => {
+      const context = await authenticateWorkspace(
+        request,
+        reply,
+        database,
+        request.params.workspaceId,
+      );
+      if (!context) return;
+      if (!canManageWorkspace(context.access.role)) return forbidden(reply);
+      if (!isUuid(request.params.connectionId)) return notFound(reply);
+
+      const [connection] = await context.database.db
+        .select()
+        .from(modelConnections)
+        .where(
+          and(
+            eq(modelConnections.id, request.params.connectionId),
+            eq(modelConnections.workspaceId, request.params.workspaceId),
+          ),
+        )
+        .limit(1);
+      if (!connection) return notFound(reply);
+      if (connection.status !== 'active') {
+        return reply.code(409).send({
+          error: { code: 'connection_disabled', message: '已停用的模型连接不能测试' },
+        });
+      }
+
+      const apiKey = await createEnvironmentSecretResolver().resolve(connection.secretRef);
+      if (!apiKey) {
+        return reply.code(400).send({
+          error: { code: 'secret_unavailable', message: '模型连接引用的服务端密钥不可用' },
+        });
+      }
+
+      const client =
+        connection.provider === 'deepseek'
+          ? createDeepSeekClient({
+              apiKey,
+              baseUrl: connection.baseUrl,
+              defaultModel: connection.modelIdentifier,
+            })
+          : new OpenAICompatibleModelClient(connection.provider, {
+              apiKey,
+              baseUrl: connection.baseUrl,
+              defaultModel: connection.modelIdentifier,
+            });
+      const testedAt = new Date();
+      try {
+        const result = await client.complete({
+          messages: [{ role: 'user', content: 'Reply with exactly OK.' }],
+          maxTokens: 8,
+        });
+        const [updated] = await context.database.db
+          .update(modelConnections)
+          .set({ lastTestedAt: testedAt, lastTestStatus: 'passed', lastTestError: null })
+          .where(eq(modelConnections.id, connection.id))
+          .returning();
+        if (!updated) throw new Error('model connection test update returned no row');
+        await context.database.db.insert(auditRecords).values({
+          workspaceId: request.params.workspaceId,
+          actorUserId: context.user.id,
+          action: 'model_connection.tested',
+          resourceType: 'model_connection',
+          resourceId: connection.id,
+          metadata: { status: 'passed', provider: connection.provider, model: result.model },
+        });
+        return reply.send({
+          status: 'passed',
+          provider: result.provider,
+          model: result.model,
+          finishReason: result.finishReason,
+          usage: result.usage,
+          testedAt: testedAt.toISOString(),
+        });
+      } catch (errorValue) {
+        const modelError = errorValue instanceof ModelRequestError ? errorValue : undefined;
+        const message = modelError?.message ?? '模型连接测试失败';
+        const safeMessage = message.slice(0, 240);
+        await context.database.db
+          .update(modelConnections)
+          .set({ lastTestedAt: testedAt, lastTestStatus: 'failed', lastTestError: safeMessage })
+          .where(eq(modelConnections.id, connection.id));
+        await context.database.db.insert(auditRecords).values({
+          workspaceId: request.params.workspaceId,
+          actorUserId: context.user.id,
+          action: 'model_connection.tested',
+          resourceType: 'model_connection',
+          resourceId: connection.id,
+          metadata: {
+            status: 'failed',
+            provider: connection.provider,
+            retryable: modelError?.retryable ?? false,
+          },
+        });
+        return reply.code(502).send({
+          error: { code: 'model_connection_test_failed', message: safeMessage },
+        });
       }
     },
   );

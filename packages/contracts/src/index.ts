@@ -18,4 +18,5 @@ export type {
   ModelConnectionListResponse,
   ModelConnectionStatus,
   ModelConnectionSummary,
+  ModelConnectionTestStatus,
 } from './models.js';

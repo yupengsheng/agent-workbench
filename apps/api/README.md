@@ -6,7 +6,7 @@
 
 M1 提供本地账号和 Workspace 基础接口：`POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`GET /api/v1/auth/me`、`GET /api/v1/workspaces` 与 `POST /api/v1/workspaces`。登录会话只以哈希形式保存到数据库，浏览器使用 HttpOnly Cookie；密码使用标准 Argon2id 编码格式，通过 `hash-wasm` 的 WASM 实现计算，避免部署时依赖原生编译工具链；服务端不会向前端返回密码或模型密钥。
 
-模型连接按工作空间隔离：`GET /api/v1/workspaces/:workspaceId/model-connections` 对成员提供脱敏列表，`POST` 和 `PATCH` 只允许 owner/admin。请求中的 `secretRef` 仅接受 `none`、`env:VARIABLE_NAME` 或 `secret:PATH` 引用，平台不接受原始模型密钥；响应只返回 `secretConfigured` 布尔值。模型连接的创建、修改会与管理审计在同一数据库事务中写入。
+模型连接按工作空间隔离：`GET /api/v1/workspaces/:workspaceId/model-connections` 对成员提供脱敏列表，`POST` 和 `PATCH` 只允许 owner/admin。请求中的 `secretRef` 仅接受 `none`、`env:VARIABLE_NAME` 或 `secret:PATH` 引用，平台不接受原始模型密钥；响应只返回 `secretConfigured` 布尔值。连接还保存无凭据的 `baseUrl` 和测试状态；`POST /api/v1/workspaces/:workspaceId/model-connections/:connectionId/test` 由 owner/admin 触发服务端测试，失败原因截断后落库并审计。模型连接的创建、修改会与管理审计在同一数据库事务中写入。
 
 owner/admin 可通过 `GET /api/v1/workspaces/:workspaceId/audit-records?limit=50&offset=0` 查询管理审计。接口使用分页快照并对可能出现的 secret、token、password、credential 和 API key 字段脱敏；审计历史没有修改或删除接口。
 

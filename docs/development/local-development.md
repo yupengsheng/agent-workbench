@@ -55,6 +55,8 @@ unset ADMIN_PASSWORD
 
 初始化命令只接受空用户库，密码使用 Argon2id 哈希保存；已有用户时会拒绝执行。登录后可通过 `GET /api/v1/workspaces` 查询成员关系，使用 `POST /api/v1/workspaces` 创建并自动成为新空间 owner。
 
+DeepSeek 连接使用 `secretRef: "env:DEEPSEEK_API_KEY"`，API 只在服务端测试或 Runner 启动时解析该变量。不要把 `DEEPSEEK_API_KEY` 写入 `.env.example`、前端变量、模型连接响应或日志；连通性测试接口只返回状态、模型和用量摘要。
+
 单独开发应用时先执行 `npm run build --workspace @agent-workbench/contracts`。构建输出位于各 workspace 的 `dist/`，不提交到 Git。
 
 ## 新增业务模块
