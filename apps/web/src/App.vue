@@ -179,7 +179,7 @@ onMounted(async () => {
             <span>01 · 用户工作台</span><span>02 · 管理员控制台</span><span>03 · 第三方通道</span>
           </div>
         </div>
-        <form class="login-card" @submit.prevent="submitLogin">
+        <form class="login-card" novalidate @submit.prevent="submitLogin">
           <p class="eyebrow">SECURE SIGN IN</p>
           <h2>登录工作台</h2>
           <p class="muted">
@@ -189,6 +189,7 @@ onMounted(async () => {
             >账号<input
               v-model="account"
               type="text"
+              name="account"
               autocomplete="username"
               required
               placeholder="admin 或 you@example.com" /></label
