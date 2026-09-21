@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import type { ChatMessageInput, ModelConnectionSummary } from '@agent-workbench/contracts';
-import { chatWithModel, getSession } from '../../lib/api';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import type {
+  ChatMessageInput,
+  ModelConnectionSummary,
+  RunDetailResponse,
+} from '@agent-workbench/contracts';
+import { chatWithModel, getSession, getRun, cancelRun } from '../../lib/api';
 
 const props = defineProps<{
   workspaceId: string;
@@ -16,6 +20,11 @@ const sessionId = ref('');
 const messages = ref<ChatMessageInput[]>([]);
 const draft = ref('');
 const pending = ref(false);
+const activeRunId = ref('');
+const runState = ref('');
+const cancelling = ref(false);
+let disposed = false;
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
 const restoring = ref(false);
 const error = ref('');
 const transcript = ref<HTMLElement>();
@@ -54,12 +63,12 @@ async function restoreSession() {
   try {
     const detail = await getSession(props.workspaceId, storedSessionId);
     const latestRun = detail.runs.at(-1);
-    const savedMessages = latestRun?.run.input.messages;
-    const restored = Array.isArray(savedMessages) ? savedMessages.filter(isMessage) : [];
-    const output = latestRun?.run.output?.message;
-    if (isMessage(output) && output.role === 'assistant') restored.push(output);
+    if (disposed) return;
     sessionId.value = detail.session.id;
-    messages.value = restored;
+    if (latestRun) {
+      applyRun(latestRun);
+      if (pending.value) schedulePoll();
+    }
     await scrollTranscript();
   } catch (requestError) {
     if (requestError instanceof Error && 'status' in requestError && requestError.status === 404) {
@@ -72,6 +81,67 @@ async function restoreSession() {
   }
 }
 
+function applyRun(detail: RunDetailResponse) {
+  if (disposed) return;
+  activeRunId.value = detail.run.id;
+  const saved = detail.run.input.messages;
+  const restored = Array.isArray(saved) ? saved.filter(isMessage) : [];
+  const output = detail.run.output?.message;
+  if (isMessage(output)) restored.push(output);
+  messages.value = restored;
+  pending.value = detail.run.status === 'queued' || detail.run.status === 'running';
+  cancelling.value = pending.value && Boolean(detail.run.cancelRequestedAt);
+  runState.value = cancelling.value
+    ? '正在取消，等待执行器确认…'
+    : detail.run.status === 'queued'
+      ? '任务已排队，等待执行…'
+      : detail.run.status === 'running'
+        ? '正在生成回复…'
+        : detail.run.status === 'cancelled'
+          ? '任务已取消'
+          : '';
+  error.value =
+    detail.run.status === 'failed' ? (detail.run.errorMessage ?? '任务执行失败，请重试') : '';
+  void scrollTranscript();
+}
+
+function schedulePoll() {
+  if (disposed || !pending.value) return;
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => {
+    void pollRun();
+  }, 1000);
+}
+
+async function pollRun() {
+  if (disposed || !activeRunId.value) return;
+  try {
+    applyRun(await getRun(props.workspaceId, activeRunId.value));
+  } catch (requestError) {
+    if (disposed) return;
+    const status =
+      requestError instanceof Error && 'status' in requestError ? requestError.status : undefined;
+    if (status === 401 || status === 404) {
+      pending.value = false;
+      error.value = '无法访问任务，请重新登录或刷新页面';
+    } else {
+      error.value = '暂时无法获取进度，正在重连；后台任务会继续执行';
+    }
+  }
+  schedulePoll();
+}
+
+async function cancelCurrentRun() {
+  if (!activeRunId.value || cancelling.value) return;
+  cancelling.value = true;
+  try {
+    applyRun(await cancelRun(props.workspaceId, activeRunId.value));
+  } catch {
+    cancelling.value = false;
+    error.value = '取消请求失败，请重试';
+  }
+}
+
 async function scrollTranscript() {
   await nextTick();
   if (transcript.value) transcript.value.scrollTop = transcript.value.scrollHeight;
@@ -81,6 +151,8 @@ function clearConversation() {
   if (pending.value || restoring.value) return;
   messages.value = [];
   sessionId.value = '';
+  activeRunId.value = '';
+  runState.value = '';
   window.sessionStorage.removeItem(sessionStorageKey.value);
   draft.value = '';
   error.value = '';
@@ -95,6 +167,8 @@ async function sendMessage() {
   }
 
   error.value = '';
+  activeRunId.value = '';
+  runState.value = '正在提交…';
   const userMessage: ChatMessageInput = { role: 'user', content };
   const history = [...messages.value, userMessage];
   messages.value.push(userMessage);
@@ -111,17 +185,22 @@ async function sendMessage() {
     });
     sessionId.value = response.sessionId;
     window.sessionStorage.setItem(sessionStorageKey.value, response.sessionId);
-    messages.value.push(response.message);
-    await scrollTranscript();
+    if (disposed) return;
+    activeRunId.value = response.runId;
+    runState.value = '任务已排队，等待执行…';
+    schedulePoll();
   } catch (requestError) {
     error.value = requestError instanceof Error ? requestError.message : '对话请求失败，请稍后重试';
-  } finally {
     pending.value = false;
   }
 }
 
 onMounted(() => {
   void restoreSession();
+});
+onUnmounted(() => {
+  disposed = true;
+  if (pollTimer) clearTimeout(pollTimer);
 });
 </script>
 
@@ -131,7 +210,7 @@ onMounted(() => {
       <div>
         <p class="eyebrow">MODEL CHAT</p>
         <h3>和 AI 对话</h3>
-        <p class="section-description">当前为同步对话，会话和每次运行记录保存在服务端。</p>
+        <p class="section-description">任务在后台执行，刷新页面后可以继续查看进度和回复。</p>
       </div>
       <button v-if="messages.length" type="button" class="quiet-button" @click="clearConversation">
         清空对话
@@ -144,7 +223,7 @@ onMounted(() => {
       <a href="/admin">前往模型配置</a>
     </div>
 
-    <template v-else>
+    <template v-if="activeModels.length || messages.length || pending || restoring">
       <label class="chat-model-picker">
         使用模型
         <select v-model="selectedModelId" :disabled="pending || restoring">
@@ -171,10 +250,19 @@ onMounted(() => {
         </article>
         <article v-if="pending" class="chat-message assistant pending-message">
           <span class="message-author">AI</span>
-          <p>正在思考…</p>
+          <p>{{ runState || '正在提交…' }}</p>
+          <button
+            v-if="activeRunId"
+            class="quiet-button"
+            :disabled="cancelling"
+            @click="cancelCurrentRun"
+          >
+            {{ cancelling ? '正在取消…' : '停止生成' }}
+          </button>
         </article>
       </div>
 
+      <p v-if="!pending && runState" role="status">{{ runState }}</p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <form class="chat-composer" @submit.prevent="sendMessage">
         <textarea

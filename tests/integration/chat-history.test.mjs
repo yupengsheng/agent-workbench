@@ -1,3 +1,11 @@
+import { runOnce, executeRun } from '../../apps/runner/dist/worker.js';
+import {
+  claimRun,
+  finishRun,
+  renewLease,
+  requestRunCancellation,
+  recoverExpiredRuns,
+} from '@agent-workbench/persistence/runs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -22,6 +30,8 @@ test(
     let database;
     let app;
     let modelCalls = 0;
+    let modelStarted;
+    let heldResponse;
     const oldKey = process.env.MODEL_SECRET_ENCRYPTION_KEY;
     process.env.MODEL_SECRET_ENCRYPTION_KEY = randomBytes(32).toString('hex');
     const secret = `fixture-key-${randomUUID()}`;
@@ -31,6 +41,11 @@ test(
       for await (const chunk of req) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString());
       res.setHeader('content-type', 'application/json');
+      if (body.messages.at(-1).content === 'hold') {
+        heldResponse = res;
+        modelStarted?.();
+        return;
+      }
       if (body.messages.at(-1).content === 'fail') {
         res.writeHead(401);
         res.end(JSON.stringify({ error: `upstream must not expose ${secret}` }));
@@ -153,22 +168,35 @@ test(
 
       await t.test('success persists response, usage and ordered terminal events', async () => {
         const response = await request('POST', `${base}/chat`, input());
-        assert.equal(response.statusCode, 200);
+        assert.equal(response.statusCode, 202);
+        assert.equal(modelCalls, 0);
+        assert.equal(response.json().status, 'queued');
+        await runOnce(database, randomUUID());
         const result = response.json();
         sessionId = result.sessionId;
         const detail = (await request('GET', `${base}/sessions/${sessionId}`)).json();
         assert.equal(detail.runs[0].run.id, result.runId);
         assert.equal(detail.runs[0].run.status, 'succeeded');
-        assert.deepEqual(detail.runs[0].run.output.message, result.message);
+        assert.deepEqual(detail.runs[0].run.output.message, {
+          role: 'assistant',
+          content: 'fixture answer',
+        });
         assert.equal(detail.runs[0].steps[0].id, result.stepId);
         assert.equal(detail.runs[0].steps[0].usage.totalTokens, 5);
         assert.deepEqual(
           detail.runs[0].events.map((event) => event.sequence),
-          [1, 2, 3, 4],
+          [1, 2, 3, 4, 5, 6],
         );
         assert.deepEqual(
           detail.runs[0].events.map((event) => event.type),
-          ['run.started', 'step.started', 'step.completed', 'run.succeeded'],
+          [
+            'run.created',
+            'step.queued',
+            'run.started',
+            'step.started',
+            'step.completed',
+            'run.succeeded',
+          ],
         );
         assert.equal((await request('GET', '/api/v1/auth/me')).statusCode, 200);
       });
@@ -214,8 +242,8 @@ test(
               { role: 'user', content: 'fail' },
             ],
           });
-          assert.equal(response.statusCode, 502);
-          assert.equal(response.json().error.retryable, false);
+          assert.equal(response.statusCode, 202);
+          await runOnce(database, randomUUID());
           const detail = (await request('GET', `${base}/sessions/${sessionId}`)).json();
           assert.equal(detail.runs.length, 2);
           const failed = detail.runs.at(-1);
@@ -225,11 +253,151 @@ test(
           assert.equal(failed.run.input.messages.length, 3);
           assert.deepEqual(
             failed.events.map((event) => event.type),
-            ['run.started', 'step.started', 'step.failed', 'run.failed'],
+            [
+              'run.created',
+              'step.queued',
+              'run.started',
+              'step.started',
+              'step.failed',
+              'run.failed',
+            ],
           );
           assert(!JSON.stringify(detail).includes(secret));
           assert(!response.body.includes(secret));
           assert.equal((await request('GET', `${base}/sessions`)).json().sessions.length, 1);
+        },
+      );
+
+      const submit = async (content = 'hello', session) => {
+        const result = await request('POST', `${base}/chat`, {
+          ...input(content),
+          ...(session ? { sessionId: session } : {}),
+        });
+        assert.equal(result.statusCode, 202);
+        return result.json();
+      };
+      const detail = async (runId) => (await request('GET', `${base}/runs/${runId}`)).json();
+
+      await t.test(
+        'session serializes concurrent submissions; competing workers claim once',
+        async () => {
+          const responses = await Promise.all(
+            [1, 2].map(() => request('POST', `${base}/chat`, { ...input(), sessionId })),
+          );
+          assert.deepEqual(responses.map((r) => r.statusCode).sort(), [202, 409]);
+          const accepted = responses.find((r) => r.statusCode === 202).json();
+          const leases = await Promise.all([
+            claimRun(database, randomUUID()),
+            claimRun(database, randomUUID()),
+          ]);
+          assert.equal(leases.filter(Boolean).length, 1);
+          const run = leases.find(Boolean);
+          assert.equal(run.id, accepted.runId);
+          const before = modelCalls;
+          await executeRun(database, run, new AbortController().signal);
+          assert.equal(modelCalls, before + 1);
+          assert.equal((await detail(run.id)).run.status, 'succeeded');
+          assert.equal(
+            await finishRun(database, run.id, run.leaseToken, {
+              status: 'failed',
+              code: 'late',
+              message: 'late',
+            }),
+            false,
+          );
+        },
+      );
+
+      await t.test('cancel before claim, repeat cancel, and ownership checks', async () => {
+        const accepted = await submit();
+        assert.equal(
+          (await request('GET', `${base}/runs/${accepted.runId}`, undefined, otherCookie))
+            .statusCode,
+          404,
+        );
+        assert.equal(
+          (await request('POST', `${base}/runs/${accepted.runId}/cancel`, {}, otherCookie))
+            .statusCode,
+          404,
+        );
+        const cancel = await request('POST', `${base}/runs/${accepted.runId}/cancel`, {});
+        assert.equal(cancel.statusCode, 200);
+        assert.equal(cancel.json().run.status, 'cancelled');
+        const repeated = await request('POST', `${base}/runs/${accepted.runId}/cancel`, {});
+        assert.equal(repeated.json().events.length, cancel.json().events.length);
+        assert.equal(await claimRun(database, randomUUID()), undefined);
+      });
+
+      await t.test(
+        'active cancellation aborts the local model request before terminal state',
+        async () => {
+          const accepted = await submit('hold');
+          const started = new Promise((resolve) => {
+            modelStarted = resolve;
+          });
+          const claimed = await claimRun(database, randomUUID());
+          const execution = executeRun(database, claimed, new AbortController().signal, 50);
+          await started;
+          await requestRunCancellation(database, accepted.runId);
+          const waiting = await detail(accepted.runId);
+          assert(waiting.run.cancelRequestedAt);
+          assert.equal(waiting.run.status, 'running');
+          await execution;
+          assert.equal((await detail(accepted.runId)).run.status, 'cancelled');
+          heldResponse.destroy();
+          modelStarted = undefined;
+        },
+      );
+
+      await t.test(
+        'expired lease fails without replay and rejects stale renewal and completion',
+        async () => {
+          const accepted = await submit();
+          const claimed = await claimRun(database, randomUUID());
+          await database.pool.query(
+            "UPDATE runs SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
+            [accepted.runId],
+          );
+          assert.equal(await renewLease(database, claimed.id, claimed.leaseToken), undefined);
+          assert.equal(
+            await finishRun(database, claimed.id, claimed.leaseToken, {
+              status: 'succeeded',
+              output: {},
+              usage: {},
+            }),
+            false,
+          );
+          const before = modelCalls;
+          await recoverExpiredRuns(database);
+          assert.equal((await detail(claimed.id)).run.errorCode, 'runner_lease_expired');
+          assert.equal(await runOnce(database, randomUUID()), false);
+          assert.equal(modelCalls, before);
+        },
+      );
+
+      await t.test(
+        'changed configuration, timeout and shutdown cannot produce successful output',
+        async () => {
+          const accepted = await submit();
+          await database.pool.query('UPDATE model_connections SET updated_at=now() WHERE id=$1', [
+            modelId,
+          ]);
+          await runOnce(database, randomUUID());
+          assert.equal((await detail(accepted.runId)).run.errorCode, 'model_configuration_changed');
+          const timeout = await submit();
+          const timedRun = await claimRun(database, randomUUID());
+          await executeRun(
+            database,
+            { ...timedRun, deadlineAt: new Date(0) },
+            new AbortController().signal,
+          );
+          assert.equal((await detail(timeout.runId)).run.errorCode, 'run_timeout');
+          const stopped = await submit();
+          const stoppedRun = await claimRun(database, randomUUID());
+          const shutdown = new AbortController();
+          shutdown.abort();
+          await executeRun(database, stoppedRun, shutdown.signal);
+          assert.equal((await detail(stopped.runId)).run.errorCode, 'runner_stopped');
         },
       );
     } finally {

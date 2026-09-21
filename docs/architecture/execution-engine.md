@@ -1,6 +1,6 @@
 # Think-Act-Observe 执行引擎
 
-状态：设计草案；实现位置预留在 `packages/runtime` 和 `apps/runner`。
+状态：TAO 为目标设计。`apps/runner` 已实现独立单模型执行、租约、取消和失败回收；当前没有工具循环或 LangGraph 接入，见 [ADR-0006](../decisions/0006-background-chat-runner.md)。
 
 ## 主循环
 

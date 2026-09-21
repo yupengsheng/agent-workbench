@@ -100,6 +100,14 @@ configure_proxy() {
 
 configure_proxy
 
+process_tree() {
+  local pid=$1 child
+  while read -r child; do
+    [[ "$child" =~ ^[0-9]+$ ]] && process_tree "$child"
+  done < <(pgrep -P "$pid" || true)
+  printf '%s\n' "$pid"
+}
+
 stop_service() {
   local name=$1
   local pid_file="$runtime_dir/$name.pid"
@@ -107,27 +115,30 @@ stop_service() {
     local pid
     pid=$(cat "$pid_file")
     if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
+      local -a service_pids
+      mapfile -t service_pids < <(process_tree "$pid")
+      kill "${service_pids[@]}" 2>/dev/null || true
       for _ in {1..20}; do
-        kill -0 "$pid" 2>/dev/null || break
+        kill -0 "${service_pids[@]}" 2>/dev/null || break
         sleep 0.25
       done
-      kill -9 "$pid" 2>/dev/null || true
+      kill -9 "${service_pids[@]}" 2>/dev/null || true
     fi
     rm -f "$pid_file"
   fi
 }
 
+stop_service runner
 stop_service api
 stop_service web
 ln -sfn "$release_dir" "$deploy_root/current"
 
 cd "$deploy_root/current"
 HOST=127.0.0.1 PORT=4100 LOG_LEVEL=info \
-  nohup npm run start --workspace @agent-workbench/api >"$runtime_dir/api.log" 2>&1 &
+  nohup node apps/api/dist/main.js >"$runtime_dir/api.log" 2>&1 &
 echo $! >"$runtime_dir/api.pid"
 
-nohup npm run preview --workspace @agent-workbench/web -- --host 127.0.0.1 --port 5173 \
+nohup node node_modules/vite/bin/vite.js preview apps/web --host 127.0.0.1 --port 5173 --strictPort \
   >"$runtime_dir/web.log" 2>&1 &
 echo $! >"$runtime_dir/web.pid"
 
@@ -143,6 +154,14 @@ wait_for_url() {
   return 1
 }
 
+SERVICE_NAME=agent-workbench-runner NODE_ENV=production \
+  nohup node apps/runner/dist/main.js >"$runtime_dir/runner.log" 2>&1 &
+echo $! >"$runtime_dir/runner.pid"
+
 wait_for_url http://127.0.0.1:4100/healthz
 wait_for_url http://127.0.0.1:5173/
+sleep 1
+for service in api web runner; do
+  kill -0 "$(cat "$runtime_dir/$service.pid")"
+done
 printf 'deployed release %s\napi: http://127.0.0.1:4100\nweb: http://127.0.0.1:5173\n' "$release_id"

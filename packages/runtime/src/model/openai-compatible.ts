@@ -134,6 +134,7 @@ export class OpenAICompatibleModelClient implements ModelPort {
     const onAbort = () => controller.abort();
     request.signal?.addEventListener('abort', onAbort, { once: true });
     try {
+      request.signal?.throwIfAborted();
       const response = await this.options.fetch(`${this.options.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {

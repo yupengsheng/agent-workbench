@@ -1,0 +1,23 @@
+{
+  "name": "@agent-workbench/runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts"
+  },
+  "dependencies": {
+    "@agent-workbench/contracts": "0.1.0",
+    "@agent-workbench/runtime": "0.1.0",
+    "@agent-workbench/persistence": "0.1.0",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "tsx": "^4.20.5"
+  },
+  "license": "Apache-2.0"
+}

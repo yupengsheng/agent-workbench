@@ -1,6 +1,6 @@
 # 执行事件、审计与回放
 
-状态：协议草案，尚未实现事件存储与 SSE。
+状态：目标事件协议。Run/Step/Event 已持久化；当前事件包含 created/queued、started、cancel_requested 和终态，Web 通过快照轮询跟踪。完整信封、SSE 和 Outbox 尚未实现。
 
 ## 事件信封
 

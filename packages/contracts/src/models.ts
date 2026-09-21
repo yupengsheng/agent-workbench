@@ -67,3 +67,11 @@ export interface ChatResponse {
   finishReason: string | null;
   usage: Record<string, number>;
 }
+
+/** POST /chat acknowledges durable submission; read the Run for its result. */
+export interface ChatAcceptedResponse {
+  sessionId: string;
+  runId: string;
+  stepId: string;
+  status: 'queued';
+}

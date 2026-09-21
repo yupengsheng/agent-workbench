@@ -26,4 +26,6 @@
 | [Agent 设计调研](research/agent-landscape.md)                   | LangGraph、MAF、AutoGen、CrewAI、OpenHands 等比较 |
 | [Loop engineering 参考](research/loop-engineering-reference.md) | Loop、Harness、自动化、验证、状态与停止条件映射   |
 
+[ADR-0006：后台对话 Runner](decisions/0006-background-chat-runner.md)记录本轮实际架构、202 提交协议、租约与取消语义。
+
 业务模块的使用说明放模块 README；架构理由放 ADR；一次性调查记录放 research。避免在不同位置复制同一套部署步骤。

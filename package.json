@@ -2,7 +2,7 @@
   "name": "agent-workbench",
   "version": "0.1.0",
   "private": true,
-  "description": "可私有化部署的多 Agent 工作台",
+  "description": "\u53ef\u79c1\u6709\u5316\u90e8\u7f72\u7684\u591a Agent \u5de5\u4f5c\u53f0",
   "engines": {
     "node": ">=22.12.0 <23 || >=24.0.0 <25",
     "npm": ">=9"
@@ -13,13 +13,13 @@
     "design/figma"
   ],
   "scripts": {
-    "predev": "npm run design:sync && npm run build --workspace @agent-workbench/contracts",
-    "dev": "concurrently --kill-others --names contracts,api,web \"npm run dev --workspace @agent-workbench/contracts\" \"npm run dev --workspace @agent-workbench/api\" \"npm run dev --workspace @agent-workbench/web\"",
+    "predev": "npm run design:sync && npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/runtime && npm run build --workspace @agent-workbench/persistence",
+    "dev": "concurrently --kill-others --names contracts,persistence,api,runner,web \"npm run dev --workspace @agent-workbench/contracts\" \"npm run build --workspace @agent-workbench/persistence -- --watch\" \"npm run dev --workspace @agent-workbench/api\" \"npm run dev --workspace @agent-workbench/runner\" \"npm run dev --workspace @agent-workbench/web\"",
     "design:sync": "node design/scripts/render-architecture.mjs && node design/scripts/sync-preview.mjs",
     "figma:build": "npm run build --workspace @agent-workbench/figma-prototype",
     "figma:typecheck": "npm run typecheck --workspace @agent-workbench/figma-prototype",
-    "build": "npm run design:sync && npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/runtime && npm run build --workspace @agent-workbench/api && npm run build --workspace @agent-workbench/web",
-    "typecheck": "npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/runtime && npm run typecheck --workspaces --if-present",
+    "build": "npm run design:sync && npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/runtime && npm run build --workspace @agent-workbench/persistence && npm run build --workspace @agent-workbench/runner && npm run build --workspace @agent-workbench/api && npm run build --workspace @agent-workbench/web",
+    "typecheck": "npm run build --workspace @agent-workbench/contracts && npm run build --workspace @agent-workbench/runtime && npm run build --workspace @agent-workbench/persistence && npm run typecheck --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm run figma:typecheck && npm run build"

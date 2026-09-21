@@ -4,9 +4,11 @@
 
 当前实现 `GET /healthz` 与 `GET /api/v1/health` 进程存活检查，以及检查数据库依赖的 `GET /readyz` 与 `GET /api/v1/ready`。配置 `DATABASE_URL` 后先执行 `npm run db:migrate --workspace @agent-workbench/api`。
 
-C 端同步对话通过 `POST /api/v1/workspaces/:workspaceId/chat` 提供。请求携带当前 workspace 中已启用的 `modelConnectionId`、最多 40 条用户/助手消息，以及续聊时的 `sessionId`。服务端解析密钥后创建聊天 Session、Run、模型 Step 和事件，成功或失败均持久化终态；响应提供运行 ID、回复和用量摘要。
+C 端对话通过 `POST /api/v1/workspaces/:workspaceId/chat` 提交，接收当前模型连接、最多 40 条消息和可选 `sessionId`。本次预发布协议从同步 `200` 改为 `202`，返回 `sessionId/runId/stepId/status`；API 只验证配置并持久化排队，模型调用在独立 Runner 中执行，前端应刷新到同版本。
 
-`GET /api/v1/workspaces/:workspaceId/sessions` 返回当前用户的会话列表，`GET /api/v1/workspaces/:workspaceId/sessions/:sessionId` 返回所属会话及 Run/Step/Event。聊天会话使用 `chat_sessions`，认证令牌仍在 `sessions`；读取与续写都校验工作空间成员和会话所有者。密钥配置错误在创建 Run 前返回。SSE、后台 Runner/租约、进程中断恢复和 TAO 工具执行仍待后续 M2 迭代。
+`GET /api/v1/workspaces/:workspaceId/runs/:runId` 返回运行快照、步骤和事件；`POST /.../runs/:runId/cancel` 提交取消。排队可直接取消，执行中先写 `cancelRequestedAt`，等待 Runner 结束本地请求后确认终态。查询和取消均验证工作空间成员与会话所有者；同一 Session 不能提交多个活动 Run，冲突返回 409。
+
+Session 列表和详情仍在 `/api/v1/workspaces/:workspaceId/sessions` 与 `/sessions/:sessionId`；认证使用 `sessions`，聊天使用 `chat_sessions`。API 与 Runner 共用 `packages/persistence`，避免重复 Schema/密钥逻辑。SSE、TAO 和工具审批待后续实现，详细决策见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md)。
 
 M1 提供本地账号和 Workspace 基础接口：`POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`GET /api/v1/auth/me`、`GET /api/v1/workspaces` 与 `POST /api/v1/workspaces`。登录会话只以哈希形式保存到数据库，浏览器使用 HttpOnly Cookie；密码使用标准 Argon2id 编码格式，通过 `hash-wasm` 的 WASM 实现计算，避免部署时依赖原生编译工具链；服务端不会向前端返回密码或模型密钥。
 

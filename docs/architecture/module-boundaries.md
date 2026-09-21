@@ -20,6 +20,10 @@
 
 `runner` 组装端口并管理租约/资源；`runtime` 推进执行；`tools` 校验和执行具体动作。模型、存储、沙箱适配器只在执行端启用。`contracts` 是公开边界，不携带数据库实体或供应商类。`packages/ui` 在第二个可复用生产组件出现时引入，不先生成空组件库。
 
+## 当前服务端共享存储
+
+`packages/persistence` 提供 Schema、数据库连接、托管密钥和 Run 事务，供 API 与 Runner 导入。runtime 只处理模型协议，不反向依赖该包；Web 只导入 contracts。原 API 存储文件保留重导出，数据库迁移仍在 database 统一管理，见 [ADR-0006](../decisions/0006-background-chat-runner.md)。
+
 ## Web 分层
 
 ```text

@@ -1,6 +1,6 @@
 {
   "title": "Agent Workbench · 技术架构",
-  "subtitle": "目标架构 v0.3 / 控制面、执行面、数据面分离",
+  "subtitle": "目标架构 v0.3 / 当前单模型 Runner 见 ADR-0006",
   "width": 1380,
   "height": 850,
   "nodes": [
@@ -56,8 +56,8 @@
     },
     {
       "id": "queue",
-      "title": "pg-boss",
-      "description": "唤醒任务 · 重复投递需幂等",
+      "title": "任务唤醒 / 领取",
+      "description": "当前 PostgreSQL · pg-boss 后续评估",
       "x": 700,
       "y": 360,
       "width": 280,

@@ -1,9 +1,22 @@
-# Runner 执行面（规划目录）
+# Runner 执行面
 
-此目录目前只有边界说明，尚无可运行的执行器。
+M2 已提供独立单模型执行器：领取 queued Run、续租、调用 ModelPort、持久化终态、响应取消和回收过期租约。每个进程一个执行槽；多个进程通过行锁竞争任务，不共享内存状态。
 
-负责领取 Run、构建执行环境、调用 `packages/runtime`、上报事件与产物、处理取消与心跳。API 提交任务，Runner 执行任务，两者通过持久化状态交接。MVP 先提供服务端 Runner；LOCAL Runner 在后续阶段实现。
+先从根目录构建，完成数据库迁移，再为 API 与 Runner 配置相同的 `DATABASE_URL` 和 `MODEL_SECRET_ENCRYPTION_KEY`。本地可让两个应用共享环境文件：
 
-未来目录：`src/main.ts`（进程入口）、`src/jobs`（领取与租约）、`src/adapters`（模型/事件存储适配）、`src/execution`（沙箱生命周期）。接入时添加独立 package.json，沿用根 workspaces。
+```bash
+ln -s ../api/.env apps/runner/.env
+npm run dev
+```
 
-任何 Shell 都必须运行在受限执行环境中。API 主进程不得代替 Runner 执行用户命令。Runner 崩溃后不能无条件重试可能已经产生外部副作用的工具调用。
+已有 runner 环境文件时直接维护该文件，无需重建链接。没有数据库配置的开发启动会显示 idle；生产启动缺少配置会失败。单独启动：
+
+```bash
+npm run start --workspace @agent-workbench/runner
+```
+
+`src/worker.ts` 组装模型、身份检查和存储端口，`src/main.ts` 管理领取循环及 SIGTERM/SIGINT。租约 30 秒、心跳 2 秒、模型执行 60 秒；Token 上限由提交快照确定。租约过期记录失败，不自动重放请求。取消确认表示本地请求已结束，不承诺供应商取消计算或计费。
+
+测试部署脚本同时启动 API、Web、Runner，Runner PID 与日志位于部署根目录 `runtime/runner.pid`、`runtime/runner.log`。仍使用试点进程管理，系统重启后的自动拉起和生产服务监管留待私有化交付。
+
+TAO、文件工具、Shell、审批和长任务检查点尚未实现。设计和协议迁移说明见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md)。

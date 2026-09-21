@@ -69,6 +69,14 @@ async function loadWorkspaceData(workspaceId: string) {
   }
 }
 
+function restoreWorkspaceSelection() {
+  const saved = window.sessionStorage.getItem(`agent-workbench:workspace:${currentUser.value?.id}`);
+  selectedWorkspaceId.value =
+    workspaces.value.find((workspace) => workspace.id === saved)?.id ??
+    workspaces.value[0]?.id ??
+    '';
+}
+
 async function loadAuthenticatedState() {
   authState.value = 'loading';
   authError.value = '';
@@ -77,7 +85,7 @@ async function loadAuthenticatedState() {
     currentUser.value = response.user;
     const workspaceResponse = await getWorkspaces();
     workspaces.value = workspaceResponse.workspaces;
-    selectedWorkspaceId.value = workspaceResponse.workspaces[0]?.id ?? '';
+    restoreWorkspaceSelection();
     authState.value = 'ready';
     await loadWorkspaceData(selectedWorkspaceId.value);
   } catch (error) {
@@ -97,7 +105,7 @@ async function submitLogin() {
     currentUser.value = response.user;
     const workspaceResponse = await getWorkspaces();
     workspaces.value = workspaceResponse.workspaces;
-    selectedWorkspaceId.value = workspaceResponse.workspaces[0]?.id ?? '';
+    restoreWorkspaceSelection();
     password.value = '';
     authState.value = 'ready';
     await loadWorkspaceData(selectedWorkspaceId.value);
@@ -130,6 +138,10 @@ function setRoute(nextRoute: Route) {
 }
 
 async function selectWorkspace() {
+  window.sessionStorage.setItem(
+    `agent-workbench:workspace:${currentUser.value?.id}`,
+    selectedWorkspaceId.value,
+  );
   await loadWorkspaceData(selectedWorkspaceId.value);
 }
 

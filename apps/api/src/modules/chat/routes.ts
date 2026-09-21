@@ -1,11 +1,6 @@
-import type { ChatResponse } from '@agent-workbench/contracts';
-import {
-  createDeepSeekClient,
-  ModelRequestError,
-  OpenAICompatibleModelClient,
-} from '@agent-workbench/runtime';
+import { parseChatRequest, type ChatAcceptedResponse } from '@agent-workbench/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { DatabaseHandle } from '../../db/client.js';
 import { chatSessions, modelConnections, runEvents, runs, runSteps } from '../../db/schema.js';
 import { getAuthenticatedUser } from '../identity/service.js';
@@ -14,14 +9,6 @@ import { getModelSecretKey, resolveModelSecret } from '../models/secrets.js';
 
 interface WorkspaceParams {
   workspaceId: string;
-}
-
-interface ChatBody {
-  modelConnectionId: string;
-  sessionId?: string;
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-  temperature?: number;
-  maxTokens?: number;
 }
 
 function isUuid(value: string): boolean {
@@ -60,67 +47,6 @@ function secretStoreUnavailable(reply: FastifyReply) {
       message: '服务端尚未配置模型密钥加密主密钥，请联系管理员完成部署配置',
     },
   });
-}
-
-function parseChatBody(body: unknown): ChatBody | undefined {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
-  const candidate = body as Record<string, unknown>;
-  if (typeof candidate.modelConnectionId !== 'string' || !isUuid(candidate.modelConnectionId)) {
-    return undefined;
-  }
-  if (candidate.sessionId !== undefined) {
-    if (typeof candidate.sessionId !== 'string' || !isUuid(candidate.sessionId)) return undefined;
-  }
-  if (
-    !Array.isArray(candidate.messages) ||
-    candidate.messages.length < 1 ||
-    candidate.messages.length > 40
-  ) {
-    return undefined;
-  }
-
-  let totalLength = 0;
-  const messages: ChatBody['messages'] = [];
-  for (const item of candidate.messages) {
-    if (typeof item !== 'object' || item === null || Array.isArray(item)) return undefined;
-    const message = item as Record<string, unknown>;
-    if (message.role !== 'user' && message.role !== 'assistant') return undefined;
-    if (typeof message.content !== 'string') return undefined;
-    const content = message.content.trim();
-    if (!content || content.length > 16_000) return undefined;
-    totalLength += content.length;
-    if (totalLength > 100_000) return undefined;
-    messages.push({ role: message.role, content });
-  }
-  if (messages[messages.length - 1]?.role !== 'user') return undefined;
-
-  const temperature = candidate.temperature;
-  if (
-    temperature !== undefined &&
-    (typeof temperature !== 'number' ||
-      !Number.isFinite(temperature) ||
-      temperature < 0 ||
-      temperature > 2)
-  ) {
-    return undefined;
-  }
-  const maxTokens = candidate.maxTokens;
-  if (
-    maxTokens !== undefined &&
-    (typeof maxTokens !== 'number' ||
-      !Number.isInteger(maxTokens) ||
-      maxTokens < 1 ||
-      maxTokens > 8192)
-  ) {
-    return undefined;
-  }
-  return {
-    modelConnectionId: candidate.modelConnectionId,
-    ...(candidate.sessionId === undefined ? {} : { sessionId: candidate.sessionId }),
-    messages,
-    ...(temperature === undefined ? {} : { temperature }),
-    ...(maxTokens === undefined ? {} : { maxTokens }),
-  };
 }
 
 async function authenticateWorkspace(
@@ -165,7 +91,7 @@ export async function registerChatRoutes(
       );
       if (!context) return;
 
-      const body = parseChatBody(request.body);
+      const body = parseChatRequest(request.body);
       if (!body) {
         return invalidRequest(reply, '请提供有效的模型连接和对话消息，最后一条消息必须来自用户');
       }
@@ -194,44 +120,31 @@ export async function registerChatRoutes(
       }
       if (!apiKey) return connectionUnavailable(reply);
 
-      const client =
-        connection.provider === 'deepseek'
-          ? createDeepSeekClient({
-              apiKey,
-              baseUrl: connection.baseUrl,
-              defaultModel: connection.modelIdentifier,
-            })
-          : new OpenAICompatibleModelClient(connection.provider, {
-              apiKey,
-              baseUrl: connection.baseUrl,
-              defaultModel: connection.modelIdentifier,
-            });
-
       let sessionId = body.sessionId;
-      if (sessionId) {
-        const [existingSession] = await context.database.db
-          .select({ id: chatSessions.id })
-          .from(chatSessions)
-          .where(
-            and(
-              eq(chatSessions.id, sessionId),
-              eq(chatSessions.workspaceId, request.params.workspaceId),
-              eq(chatSessions.ownerUserId, context.user.id),
-              eq(chatSessions.status, 'active'),
-            ),
-          )
-          .limit(1);
-        if (!existingSession) {
-          return reply
-            .code(404)
-            .send({ error: { code: 'session_not_found', message: '对话不存在' } });
-        }
-      }
-
       const firstUserMessage = body.messages.find((message) => message.role === 'user');
       const sessionTitle = firstUserMessage?.content.slice(0, 80) || '新对话';
-      const startedAt = new Date();
       const execution = await context.database.db.transaction(async (tx) => {
+        if (sessionId) {
+          const [session] = await tx
+            .select()
+            .from(chatSessions)
+            .where(
+              and(
+                eq(chatSessions.id, sessionId),
+                eq(chatSessions.workspaceId, request.params.workspaceId),
+                eq(chatSessions.ownerUserId, context.user.id),
+                eq(chatSessions.status, 'active'),
+              ),
+            )
+            .for('update');
+          if (!session) return { error: 'session_not_found' } as const;
+          const active = await tx
+            .select({ id: runs.id })
+            .from(runs)
+            .where(and(eq(runs.sessionId, sessionId), inArray(runs.status, ['queued', 'running'])))
+            .limit(1);
+          if (active.length) return { error: 'session_busy' } as const;
+        }
         if (!sessionId) {
           const [createdSession] = await tx
             .insert(chatSessions)
@@ -252,9 +165,19 @@ export async function registerChatRoutes(
             sessionId,
             triggerUserId: context.user.id,
             modelConnectionId: connection.id,
-            status: 'running',
-            input: { messages: body.messages },
-            startedAt,
+            status: 'queued',
+            input: {
+              messages: body.messages,
+              modelConnectionId: connection.id,
+              maxTokens: body.maxTokens ?? 1024,
+              ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
+              modelConfig: {
+                provider: connection.provider,
+                model: connection.modelIdentifier,
+                baseUrl: connection.baseUrl,
+                updatedAt: connection.updatedAt.toISOString(),
+              },
+            },
           })
           .returning({ id: runs.id });
         if (!run) throw new Error('run insert returned no row');
@@ -265,9 +188,8 @@ export async function registerChatRoutes(
             runId: run.id,
             sequence: 1,
             kind: 'model',
-            status: 'running',
+            status: 'queued',
             input: { messages: body.messages, modelConnectionId: connection.id },
-            startedAt,
           })
           .returning({ id: runSteps.id });
         if (!step) throw new Error('run step insert returned no row');
@@ -276,142 +198,37 @@ export async function registerChatRoutes(
           {
             runId: run.id,
             sequence: 1,
-            type: 'run.started',
+            type: 'run.created',
             payload: { modelConnectionId: connection.id },
           },
           {
             runId: run.id,
             sequence: 2,
-            type: 'step.started',
+            type: 'step.queued',
             stepId: step.id,
             payload: { kind: 'model' },
           },
         ]);
+        await tx
+          .update(chatSessions)
+          .set({ updatedAt: sql`now()` })
+          .where(eq(chatSessions.id, sessionId));
         return { sessionId, runId: run.id, stepId: step.id };
       });
 
-      try {
-        const result = await client.complete({
-          messages: body.messages,
-          ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
-          maxTokens: body.maxTokens ?? 1024,
-        });
-        const response: ChatResponse = {
-          sessionId: execution.sessionId,
-          runId: execution.runId,
-          stepId: execution.stepId,
-          message: {
-            role: 'assistant',
-            content: result.message.content ?? '',
-          },
-          provider: result.provider,
-          model: result.model,
-          finishReason: result.finishReason,
-          usage: {
-            ...(result.usage.promptTokens === undefined
-              ? {}
-              : { promptTokens: result.usage.promptTokens }),
-            ...(result.usage.completionTokens === undefined
-              ? {}
-              : { completionTokens: result.usage.completionTokens }),
-            ...(result.usage.totalTokens === undefined
-              ? {}
-              : { totalTokens: result.usage.totalTokens }),
-          },
-        };
-        const completedAt = new Date();
-        await context.database.db.transaction(async (tx) => {
-          await tx
-            .update(runSteps)
-            .set({
-              status: 'succeeded',
-              output: { message: response.message },
-              usage: response.usage,
-              completedAt,
-            })
-            .where(eq(runSteps.id, execution.stepId));
-          await tx
-            .update(runs)
-            .set({
-              status: 'succeeded',
-              output: { message: response.message },
-              completedAt,
-              updatedAt: completedAt,
-            })
-            .where(eq(runs.id, execution.runId));
-          await tx
-            .update(chatSessions)
-            .set({ updatedAt: completedAt })
-            .where(eq(chatSessions.id, execution.sessionId));
-          await tx.insert(runEvents).values([
-            {
-              runId: execution.runId,
-              sequence: 3,
-              type: 'step.completed',
-              stepId: execution.stepId,
-              payload: { status: 'succeeded', usage: response.usage },
-            },
-            {
-              runId: execution.runId,
-              sequence: 4,
-              type: 'run.succeeded',
-              payload: { model: response.model, provider: response.provider },
-            },
-          ]);
-        });
-        return reply.send(response);
-      } catch (error) {
-        const modelError = error instanceof ModelRequestError ? error : undefined;
-        const safeMessage = modelError?.message ?? '模型请求失败，请稍后重试';
-        const completedAt = new Date();
-        await context.database.db.transaction(async (tx) => {
-          await tx
-            .update(runSteps)
-            .set({
-              status: 'failed',
-              errorCode: 'model_request_failed',
-              errorMessage: safeMessage,
-              completedAt,
-            })
-            .where(eq(runSteps.id, execution.stepId));
-          await tx
-            .update(runs)
-            .set({
-              status: 'failed',
-              errorCode: 'model_request_failed',
-              errorMessage: safeMessage,
-              completedAt,
-              updatedAt: completedAt,
-            })
-            .where(eq(runs.id, execution.runId));
-          await tx
-            .update(chatSessions)
-            .set({ updatedAt: completedAt })
-            .where(eq(chatSessions.id, execution.sessionId));
-          await tx.insert(runEvents).values([
-            {
-              runId: execution.runId,
-              sequence: 3,
-              type: 'step.failed',
-              stepId: execution.stepId,
-              payload: { status: 'failed', retryable: modelError?.retryable ?? true },
-            },
-            {
-              runId: execution.runId,
-              sequence: 4,
-              type: 'run.failed',
-              payload: { code: 'model_request_failed' },
-            },
-          ]);
-        });
-        return reply.code(502).send({
+      if ('error' in execution) {
+        return reply.code(execution.error === 'session_busy' ? 409 : 404).send({
           error: {
-            code: 'model_request_failed',
-            message: safeMessage,
-            retryable: modelError?.retryable ?? true,
+            code: execution.error,
+            message:
+              execution.error === 'session_busy'
+                ? '当前对话已有任务，请等待完成或取消'
+                : '对话不存在',
           },
         });
       }
+      const response: ChatAcceptedResponse = { ...execution, status: 'queued' };
+      return reply.code(202).send(response);
     },
   );
 }

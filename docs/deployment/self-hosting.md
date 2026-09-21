@@ -10,7 +10,7 @@
 curl -fsSL https://workbench-cli.oss-cn-hangzhou.aliyuncs.com/install.sh | bash
 ```
 
-随后工作流创建当前 commit 的归档，通过 Workbench CLI 上传到测试 ECS，在 `/opt/agent-workbench-test`（可配置）创建版本目录，执行 `npm ci`、`npm run check`，启动 API 和 Web 预览服务，并检查：
+随后工作流创建当前 commit 的归档，通过 Workbench CLI 上传到测试 ECS，在 `/opt/agent-workbench-test`（可配置）创建版本目录，执行 `npm ci`、`npm run check`，启动 API、Runner 和 Web 预览服务，并检查：
 
 - API：`http://127.0.0.1:4100/healthz`
 - Web：`http://127.0.0.1:5173/`
@@ -69,3 +69,11 @@ MVP 离线验收针对文件分析、受限命令和报告生成；外部网页�
 升级前备份数据库与产物，确认迁移兼容性，排空或续租运行任务。恢复测试必须覆盖 Run、审批、工具执行结果和任务租约；恢复 API 服务不代表任务可以安全继续。
 
 数据库迁移遵循 `database/migrations/README.md`。应用回滚不自动回滚已产生的数据变更，须单独定义版本兼容与数据恢复方案。
+
+## Runner 增量升级
+
+`0006_runner_leases.sql` 为追加字段/索引迁移。发布脚本先构建和迁移，再停止上一版 Runner/API/Web，启动三个进程并确认 Runner PID 存活。API 与 Runner 共用原有 `.env`，不更换 `MODEL_SECRET_ENCRYPTION_KEY`。
+
+本次 `/chat` 改为 202 提交协议，必须同时发布 Web 并刷新旧页面。若回退到仅支持同步 200 的版本，应先停止新 Runner，核对未结束任务后再切换；应用回滚不会移除新数据库字段。旧版无租约 running 记录会在 Runner 启动后标记失败，不自动重新请求模型。
+
+Runner 日志与 PID 在部署根目录 `runtime/runner.log`、`runtime/runner.pid`。进程崩溃后的过期任务由仍活跃或重启后的 Runner 收敛；系统重启的自动拉起与生产进程监管仍需 M5 交付。

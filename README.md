@@ -2,7 +2,7 @@
 
 可私有化部署的多 Agent 工作台。目标是统一管理 Agent、模型、用户与审计，通过 Think-Act-Observe 引擎执行文件、命令、网页和子任务操作。
 
-**当前阶段：M2 单 Agent 只读闭环建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。Runner、TAO 工具循环、实时事件、审批和审计扩展仍按路线建设。
+**当前阶段：M2 单 Agent 只读闭环建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。独立 Runner 已支持后台执行、租约、取消和异常终态；TAO 工具循环、SSE、审批和审计扩展仍按路线建设。
 
 ## 快速开始
 
@@ -30,19 +30,20 @@ npm run start --workspace @agent-workbench/api
 npm run db:migrate --workspace @agent-workbench/api # DATABASE_URL 已配置时执行迁移
 ```
 
-生产构建不等同于可生产部署版本。当前 API 只提供健康/就绪检查和数据库迁移边界，业务认证与执行隔离须在开放业务功能前完成。
+当前是单机测试版本。用户对话提交返回任务 ID，API 与 Runner 通过数据库交接，页面轮询进度；TAO 与工具隔离仍未开放。接口变化、运行参数与依赖图见 [ADR-0006](docs/decisions/0006-background-chat-runner.md)。
 
 ## 目录
 
 ```text
 agent-workbench/
 ├── apps/
-│   ├── web/                   # Vue 用户工作台与后续管理页面
+│   ├── web/                   # Vue 用户工作台与管理员页面
 │   ├── api/                   # Fastify 控制面，按领域组织模块
-│   └── runner/                # 执行进程边界说明，待实现
+│   └── runner/                # 独立模型执行、租约、取消
 ├── packages/
 │   ├── contracts/             # HTTP、事件与工具协议的共享契约
-│   ├── runtime/               # Harness 边界说明，待实现
+│   ├── runtime/               # 模型适配；Harness 待实现
+│   ├── persistence/           # API/Runner 共用数据库与 Run 事务
 │   └── tools/                 # 工具和策略边界说明，待实现
 ├── docs/
 │   ├── product/               # 定位、需求、页面与角色
@@ -53,8 +54,8 @@ agent-workbench/
 │   ├── deployment/            # 部署、升级、备份规划
 │   └── research/              # Mao 借鉴与已核实边界
 ├── design/                    # tokens、浏览器原型、架构图和 Figma 插件
-├── infra/compose/             # 可选本地 PostgreSQL；尚未接入 API
-├── database/migrations/       # 迁移命名与维护约定，待实现
+├── infra/compose/             # 本地 PostgreSQL
+├── database/migrations/       # 版本化 SQL 迁移
 ├── tests/                     # 跨服务验收用例的放置约定
 └── .github/workflows/ci.yml   # 推送后的构建检查
 ```

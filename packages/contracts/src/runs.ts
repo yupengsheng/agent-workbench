@@ -17,6 +17,8 @@ export interface RunSummary {
   sessionId: string;
   modelConnectionId: string | null;
   status: RunStatus;
+  cancelRequestedAt: string | null;
+  deadlineAt: string | null;
   input: Record<string, unknown>;
   output: Record<string, unknown> | null;
   errorCode: string | null;
@@ -64,4 +66,10 @@ export interface SessionDetailResponse {
     steps: RunStepSummary[];
     events: RunEventSummary[];
   }>;
+}
+
+export interface RunDetailResponse {
+  run: RunSummary;
+  steps: RunStepSummary[];
+  events: RunEventSummary[];
 }

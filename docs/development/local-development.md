@@ -77,11 +77,11 @@ npm run admin:init --workspace @agent-workbench/api
 
 API 按 `src/modules/<domain>` 放路由、输入 Schema、服务和仓储；Web 按 `src/features/<domain>` 放页面与领域交互。先在 contracts 中定义公开边界及运行时校验方案，再实现消费者。
 
-Runner、runtime 和 tools 当前只有 README。在对应里程碑加入 package.json 和源码，沿用根工作区；同时更新根 build/typecheck/dev 命令、CI 和架构依赖图。不要为了预留目录手动创建空启动进程。
+Runner、runtime 和 persistence 已是实际工作区包，tools 仍只有 README。在对应里程碑加入 package.json 和源码，沿用根工作区；同时更新根 build/typecheck/dev 命令、CI 和架构依赖图。不要为了预留目录手动创建空启动进程。
 
 ## 验证策略
 
-当前检查包含格式、TypeScript 和生产构建。初始化时另外验证健康接口、404、Web/API 代理、进程启动和关闭。尚未引入业务测试框架；首次状态/权限逻辑进入仓库时增加有价值的模块测试。
+当前检查包含格式、TypeScript 和生产构建。初始化时另外验证健康接口、404、Web/API 代理、进程启动和关闭。数据库与浏览器回归已接入 CI，复现命令见 tests/README.md。
 
 重要场景优先测试真实行为：拒绝时没有副作用、重复消息不重复执行、取消传播、越权访问被拒、恢复时外部结果不明。跨服务测试放 `tests/`，模块测试与源码相邻。
 
@@ -91,3 +91,5 @@ Runner、runtime 和 tools 当前只有 README。在对应里程碑加入 packag
 - 页面显示 API 不可用：确认 4100 端口的 API 已启动，检查代理配置和控制台日志。
 - `EADDRINUSE`：确认现有监听进程归属，使用其他端口或关闭自己的进程；不要终止未知项目。
 - Docker 不可用：不影响无数据库的 Web/API 开发；要验证 M1 迁移和 `/readyz`，需要可连接的 PostgreSQL 17。
+
+API 与 Runner 需要相同数据库和托管密钥配置，本地共享环境文件的方式见 [Runner README](../../apps/runner/README.md)。

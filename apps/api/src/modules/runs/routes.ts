@@ -1,4 +1,6 @@
+import { requestRunCancellation } from '@agent-workbench/persistence/runs';
 import type {
+  RunDetailResponse,
   RunEventSummary,
   RunStepSummary,
   RunSummary,
@@ -81,6 +83,8 @@ function toRun(row: typeof runs.$inferSelect): RunSummary {
     sessionId: row.sessionId,
     modelConnectionId: row.modelConnectionId,
     status: row.status,
+    cancelRequestedAt: row.cancelRequestedAt?.toISOString() ?? null,
+    deadlineAt: row.deadlineAt?.toISOString() ?? null,
     input: row.input,
     output: row.output,
     errorCode: row.errorCode,
@@ -122,10 +126,71 @@ function toEvent(row: typeof runEvents.$inferSelect): RunEventSummary {
   };
 }
 
+async function runDetail(
+  database: DatabaseHandle,
+  row: typeof runs.$inferSelect,
+): Promise<RunDetailResponse> {
+  const [steps, events] = await Promise.all([
+    database.db
+      .select()
+      .from(runSteps)
+      .where(eq(runSteps.runId, row.id))
+      .orderBy(asc(runSteps.sequence)),
+    database.db
+      .select()
+      .from(runEvents)
+      .where(eq(runEvents.runId, row.id))
+      .orderBy(asc(runEvents.sequence)),
+  ]);
+  return { run: toRun(row), steps: steps.map(toStep), events: events.map(toEvent) };
+}
+
 export async function registerRunRoutes(
   app: FastifyInstance,
   database: DatabaseHandle | undefined,
 ) {
+  for (const method of ['GET', 'POST'] as const) {
+    app.route<{ Params: WorkspaceParams & { runId: string } }>({
+      method,
+      url: `/api/v1/workspaces/:workspaceId/runs/:runId${method === 'POST' ? '/cancel' : ''}`,
+      handler: async (request, reply) => {
+        const context = await authenticateWorkspace(
+          request,
+          reply,
+          database,
+          request.params.workspaceId,
+        );
+        if (!context) return;
+        const missing = () =>
+          reply.code(404).send({ error: { code: 'run_not_found', message: '任务不存在' } });
+        if (!isUuid(request.params.runId)) return missing();
+        const [row] = await context.database.db
+          .select({ run: runs })
+          .from(runs)
+          .innerJoin(chatSessions, eq(chatSessions.id, runs.sessionId))
+          .where(
+            and(
+              eq(runs.id, request.params.runId),
+              eq(runs.workspaceId, request.params.workspaceId),
+              eq(chatSessions.workspaceId, request.params.workspaceId),
+              eq(chatSessions.ownerUserId, context.user.id),
+            ),
+          )
+          .limit(1);
+        if (!row) return missing();
+        if (method === 'POST') {
+          await requestRunCancellation(context.database, row.run.id);
+          const [updated] = await context.database.db
+            .select()
+            .from(runs)
+            .where(eq(runs.id, row.run.id));
+          if (!updated) return missing();
+          return reply.send(await runDetail(context.database, updated));
+        }
+        return reply.send(await runDetail(context.database, row.run));
+      },
+    });
+  }
   app.get(
     '/api/v1/workspaces/:workspaceId/sessions',
     async (request: FastifyRequest<{ Params: WorkspaceParams }>, reply) => {

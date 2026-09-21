@@ -2,7 +2,8 @@ import type {
   AgentListResponse,
   AuthResponse,
   ChatRequest,
-  ChatResponse,
+  ChatAcceptedResponse,
+  RunDetailResponse,
   HealthResponse,
   ModelConnectionInput,
   ModelConnectionListResponse,
@@ -122,16 +123,36 @@ export function getAgents(workspaceId: string): Promise<AgentListResponse> {
   );
 }
 
-export function chatWithModel(workspaceId: string, input: ChatRequest): Promise<ChatResponse> {
-  return readJson<ChatResponse>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/chat`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+export function chatWithModel(
+  workspaceId: string,
+  input: ChatRequest,
+): Promise<ChatAcceptedResponse> {
+  return readJson<ChatAcceptedResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/chat`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function getSession(workspaceId: string, sessionId: string): Promise<SessionDetailResponse> {
   return readJson<SessionDetailResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+export function getRun(workspaceId: string, runId: string): Promise<RunDetailResponse> {
+  return readJson(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}`,
+    { signal: AbortSignal.timeout(10000) },
+  );
+}
+
+export function cancelRun(workspaceId: string, runId: string): Promise<RunDetailResponse> {
+  return readJson(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}/cancel`,
+    { method: 'POST' },
   );
 }

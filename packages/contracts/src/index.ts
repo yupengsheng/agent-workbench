@@ -38,3 +38,7 @@ export type {
   SessionStatus,
   SessionSummary,
 } from './runs.js';
+
+export { parseChatRequest } from './chat-validation.js';
+export type { ChatAcceptedResponse } from './models.js';
+export type { RunDetailResponse } from './runs.js';

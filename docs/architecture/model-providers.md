@@ -1,6 +1,6 @@
 # 模型提供商与自研模型路线
 
-状态：DeepSeek 适配器已在 `packages/runtime` 完成协议级 smoke 验证；API 模型连接管理、管理员配置页面和服务端测试接口已实现。管理员可直接录入 API Key，服务端用 `MODEL_SECRET_ENCRYPTION_KEY` 加密保存；也可配置 `env:NAME` 密钥引用。Runner 调用尚未接入。
+状态：DeepSeek 适配器已在 `packages/runtime` 完成协议级 smoke 验证；API 模型连接管理、管理员配置页面和服务端测试接口已实现。管理员可直接录入 API Key，服务端用 `MODEL_SECRET_ENCRYPTION_KEY` 加密保存；也可配置 `env:NAME` 密钥引用。独立 Runner 已接入单模型调用与取消；真实 DeepSeek 成功对话仍待单独验收。
 
 ## 选择比较
 
