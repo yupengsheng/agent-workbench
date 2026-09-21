@@ -1,6 +1,6 @@
 # 信息架构
 
-状态：规划。当前 Web 仍是开发首页和连接检查；用户工作台、管理员控制台和第三方通道按[入口与通道边界](../architecture/experience-surfaces.md)分阶段接入。
+状态：基础壳已实现，业务页面仍按[入口与通道边界](../architecture/experience-surfaces.md)分阶段接入；用户工作台、管理员控制台和第三方通道共享 API 权限事实。
 
 ## 入口分层
 
