@@ -10,6 +10,20 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: workbench_test
+          POSTGRES_PASSWORD: workbench_test
+          POSTGRES_DB: workbench_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workbench_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,3 +32,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Verify chat persistence and ownership
+        run: node --test tests/integration/chat-history.test.mjs
+        env:
+          TEST_DATABASE_URL: postgres://workbench_test:workbench_test@127.0.0.1:5432/workbench_test
+      - run: npx playwright install --with-deps chromium
+      - name: Verify chat restoration in the browser
+        run: npx playwright test --config tests/e2e/playwright.config.mjs

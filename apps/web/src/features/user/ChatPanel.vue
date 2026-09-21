@@ -16,6 +16,7 @@ const sessionId = ref('');
 const messages = ref<ChatMessageInput[]>([]);
 const draft = ref('');
 const pending = ref(false);
+const restoring = ref(false);
 const error = ref('');
 const transcript = ref<HTMLElement>();
 
@@ -49,6 +50,7 @@ async function restoreSession() {
   if (!props.workspaceId) return;
   const storedSessionId = window.sessionStorage.getItem(sessionStorageKey.value);
   if (!storedSessionId) return;
+  restoring.value = true;
   try {
     const detail = await getSession(props.workspaceId, storedSessionId);
     const latestRun = detail.runs.at(-1);
@@ -59,8 +61,14 @@ async function restoreSession() {
     sessionId.value = detail.session.id;
     messages.value = restored;
     await scrollTranscript();
-  } catch {
-    window.sessionStorage.removeItem(sessionStorageKey.value);
+  } catch (requestError) {
+    if (requestError instanceof Error && 'status' in requestError && requestError.status === 404) {
+      window.sessionStorage.removeItem(sessionStorageKey.value);
+    } else {
+      error.value = '恢复对话失败，请刷新页面重试';
+    }
+  } finally {
+    restoring.value = false;
   }
 }
 
@@ -70,7 +78,7 @@ async function scrollTranscript() {
 }
 
 function clearConversation() {
-  if (pending.value) return;
+  if (pending.value || restoring.value) return;
   messages.value = [];
   sessionId.value = '';
   window.sessionStorage.removeItem(sessionStorageKey.value);
@@ -80,7 +88,7 @@ function clearConversation() {
 
 async function sendMessage() {
   const content = draft.value.trim();
-  if (!content || pending.value) return;
+  if (!content || pending.value || restoring.value) return;
   if (!selectedModelId.value) {
     error.value = '请先在管理员控制台配置并启用一个模型连接';
     return;
@@ -139,7 +147,7 @@ onMounted(() => {
     <template v-else>
       <label class="chat-model-picker">
         使用模型
-        <select v-model="selectedModelId" :disabled="pending">
+        <select v-model="selectedModelId" :disabled="pending || restoring">
           <option v-for="model in activeModels" :key="model.id" :value="model.id">
             {{ model.name }} · {{ model.modelIdentifier }}
           </option>
@@ -147,7 +155,8 @@ onMounted(() => {
       </label>
 
       <div ref="transcript" class="chat-transcript" aria-live="polite">
-        <div v-if="messages.length === 0" class="chat-welcome">
+        <p v-if="restoring" role="status">正在恢复对话…</p>
+        <div v-else-if="messages.length === 0" class="chat-welcome">
           <strong>从一个问题开始</strong>
           <p>可以让 AI 总结方案、解释代码，或帮助你拆解下一步工作。</p>
         </div>
@@ -170,7 +179,7 @@ onMounted(() => {
       <form class="chat-composer" @submit.prevent="sendMessage">
         <textarea
           v-model="draft"
-          :disabled="pending"
+          :disabled="pending || restoring"
           maxlength="16000"
           rows="4"
           placeholder="输入你的问题…（Ctrl/⌘ + Enter 发送）"
@@ -179,7 +188,11 @@ onMounted(() => {
         ></textarea>
         <div class="chat-composer-footer">
           <span class="muted">{{ selectedModel?.name }} · 服务端调用 · 浏览器不会接触 API Key</span>
-          <button class="compact-primary" type="submit" :disabled="pending || !draft.trim()">
+          <button
+            class="compact-primary"
+            type="submit"
+            :disabled="pending || restoring || !draft.trim()"
+          >
             {{ pending ? '发送中…' : '发送' }}
           </button>
         </div>

@@ -1,5 +1,5 @@
 {
-  "note": "Dynamic source fingerprints, not benchmark results; raw caches are untracked.",
+  "note": "Research source registry: retrieved entries record fetch evidence; user_provided_text records supplied material; cited_not_verified is a citation only. Neither collection nor retrieval implies adoption or benchmark verification.",
   "sources": [
     {
       "id": "openai-agents",
@@ -141,21 +141,63 @@
     {
       "id": "loop-engineering",
       "url": "https://addyosmani.com/blog/loop-engineering/",
-      "retrievedAt": "2026-09-21",
-      "status": "user-provided-reference",
-      "note": "Chinese article text supplied by the user; repository stores a summary and project mapping, not a copied full text."
+      "status": "cited_not_verified",
+      "recordedAt": "2026-09-21",
+      "citedBy": "REF-LOOP-001"
     },
     {
       "id": "harness-engineering-coding-agent-users",
       "url": "https://martinfowler.com/articles/harness-engineering.html",
-      "retrievedAt": "2026-09-21",
-      "status": "cited-by-user-provided-reference"
+      "status": "cited_not_verified",
+      "recordedAt": "2026-09-21",
+      "citedBy": "REF-LOOP-001"
     },
     {
       "id": "ralph-loop-amplitude",
       "url": "https://amplitude.com/blog/ralph-loop",
-      "retrievedAt": "2026-09-21",
-      "status": "cited-by-user-provided-reference"
+      "status": "cited_not_verified",
+      "recordedAt": "2026-09-21",
+      "citedBy": "REF-LOOP-001"
+    },
+    {
+      "id": "REF-LOOP-001",
+      "title": "Loop engineering：把 agent 放进工程循环",
+      "author": "苏雄",
+      "affiliation": "淘天集团会员技术团队",
+      "url": null,
+      "publishedAt": null,
+      "recordedAt": "2026-09-21",
+      "status": "user_provided_text",
+      "document": "loop-engineering-reference.md",
+      "adoptionStatus": "reference_only"
+    },
+    {
+      "id": "ai-workflow-store",
+      "url": "https://arxiv.org/abs/2605.10907",
+      "recordedAt": "2026-09-21",
+      "status": "cited_not_verified",
+      "citedBy": "REF-LOOP-001"
+    },
+    {
+      "id": "eurekagent",
+      "url": "https://arxiv.org/abs/2606.13662",
+      "recordedAt": "2026-09-21",
+      "status": "cited_not_verified",
+      "citedBy": "REF-LOOP-001"
+    },
+    {
+      "id": "claude-scheduled-tasks",
+      "url": "https://code.claude.com/docs/en/scheduled-tasks",
+      "recordedAt": "2026-09-21",
+      "status": "cited_not_verified",
+      "citedBy": "REF-LOOP-001"
+    },
+    {
+      "id": "claude-hooks-guide",
+      "url": "https://code.claude.com/docs/en/hooks-guide",
+      "recordedAt": "2026-09-21",
+      "status": "cited_not_verified",
+      "citedBy": "REF-LOOP-001"
     }
   ]
 }

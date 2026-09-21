@@ -305,7 +305,6 @@ export const workspaceRelations = relations(workspaces, ({ many }) => ({
   modelConnections: many(modelConnections),
   agents: many(agents),
   auditRecords: many(auditRecords),
-  sessions: many(sessions),
   chatSessions: many(chatSessions),
   runs: many(runs),
   artifacts: many(artifacts),

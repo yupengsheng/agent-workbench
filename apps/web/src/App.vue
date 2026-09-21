@@ -266,7 +266,11 @@ onMounted(async () => {
               @changed="loadWorkspaceData(selectedWorkspaceId)"
           /></template>
           <template v-else
-            ><ChatPanel :workspace-id="selectedWorkspaceId" :models="models" />
+            ><ChatPanel
+              :key="`${currentUser?.id}:${selectedWorkspaceId}`"
+              :workspace-id="selectedWorkspaceId"
+              :models="models"
+            />
             <div class="stat-grid">
               <article>
                 <span>可用模型</span

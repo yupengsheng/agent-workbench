@@ -1,6 +1,25 @@
 # 测试规划
 
-当前 `npm run check` 执行格式、类型与构建检查；这里尚无业务测试。API 实例可通过 Fastify inject 验证，无需绑定网络端口。
+`npm run check` 执行格式、类型与构建检查。CI 随后运行 PostgreSQL 集成测试和浏览器回归测试；API 实例通过 Fastify inject 验证。
+
+## 对话持久化回归
+
+先执行 `npm run build`，准备测试 PostgreSQL，再运行：
+
+```bash
+TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db \
+  node --test tests/integration/chat-history.test.mjs
+npx playwright install chromium
+npx playwright test --config tests/e2e/playwright.config.mjs
+```
+
+数据库测试创建随机 `chat_test_*` schema，执行全部迁移，结束时删除该 schema。连接账号需具备创建 schema 权限；仅用于测试数据库。没有 `TEST_DATABASE_URL` 时会显示跳过，不能计为验收通过。
+
+集成测试覆盖未登录、模型不存在、缺少密钥/加密主密钥、成功与失败终态、事件顺序、用量、用户/工作空间隔离，以及 API 实例重建后的读取与续聊。使用本机模型模拟服务，不请求真实供应商；临时密钥和测试进程不会改变运行中 API 的配置。
+
+浏览器测试使用接口夹具和真实 Vue 页面，覆盖刷新恢复期间禁止发送、恢复后续聊、清空后创建新会话、切换工作空间。它不等同于真实模型端到端验收。
+
+## 后续覆盖
 
 后续目录随真实用例建立：
 
