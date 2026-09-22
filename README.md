@@ -2,7 +2,7 @@
 
 可私有化部署的多 Agent 工作台。目标是统一管理 Agent、模型、用户与审计，通过 Think-Act-Observe 引擎执行文件、命令、网页和子任务操作。
 
-**当前阶段：M2 单 Agent 只读闭环建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。独立 Runner 已支持后台执行、租约、取消和异常终态；TAO 工具循环、SSE、审批和审计扩展仍按路线建设。
+**当前阶段：M2 单 Agent 只读闭环建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。独立 Runner 已支持后台执行、租约、取消和异常终态；首版 TAO 循环与受限只读文件工具已落地，SSE、审批、写入和审计扩展仍按路线建设。
 
 ## 快速开始
 
@@ -30,7 +30,7 @@ npm run start --workspace @agent-workbench/api
 npm run db:migrate --workspace @agent-workbench/api # DATABASE_URL 已配置时执行迁移
 ```
 
-当前是单机测试版本。用户对话提交返回任务 ID，API 与 Runner 通过数据库交接，页面轮询进度；TAO 与工具隔离仍未开放。接口变化、运行参数与依赖图见 [ADR-0006](docs/decisions/0006-background-chat-runner.md)。
+当前是单机测试版本。用户对话提交返回任务 ID，API 与 Runner 通过数据库交接，页面轮询进度；只读工具受工作区根目录和预算限制。接口变化、运行参数与依赖图见 [ADR-0006](docs/decisions/0006-background-chat-runner.md) 和 [ADR-0007](docs/decisions/0007-tao-readonly-tools.md)。
 
 ## 目录
 
@@ -42,9 +42,9 @@ agent-workbench/
 │   └── runner/                # 独立模型执行、租约、取消
 ├── packages/
 │   ├── contracts/             # HTTP、事件与工具协议的共享契约
-│   ├── runtime/               # 模型适配；Harness 待实现
+│   ├── runtime/               # 模型适配与 Think-Act-Observe 循环
 │   ├── persistence/           # API/Runner 共用数据库与 Run 事务
-│   └── tools/                 # 工具和策略边界说明，待实现
+│   └── tools/                 # 受限只读工具注册表（read_file/glob/grep）
 ├── docs/
 │   ├── product/               # 定位、需求、页面与角色
 │   ├── architecture/          # 数据模型、执行、事件、安全、扩展

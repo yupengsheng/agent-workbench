@@ -41,7 +41,12 @@ async function finalize(tx: Transaction, run: RunRow, outcome: RunOutcome) {
   const steps = await tx
     .update(runSteps)
     .set({ ...values, usage: outcome.status === 'succeeded' ? outcome.usage : {} })
-    .where(eq(runSteps.runId, run.id))
+    .where(
+      and(
+        eq(runSteps.runId, run.id),
+        or(eq(runSteps.status, 'queued'), eq(runSteps.status, 'running')),
+      ),
+    )
     .returning({ id: runSteps.id });
   await tx
     .update(runs)
@@ -62,6 +67,81 @@ async function finalize(tx: Transaction, run: RunRow, outcome: RunOutcome) {
       payload: outcome.status === 'failed' ? { code: outcome.code } : {},
     },
   ]);
+}
+
+export async function startToolStep(
+  database: DatabaseHandle,
+  runId: string,
+  token: string,
+  input: Record<string, unknown>,
+) {
+  return database.db.transaction(async (tx) => {
+    const [run] = await tx.select().from(runs).where(validLease(runId, token)).for('update');
+    if (!run) return undefined;
+    const [last] = await tx
+      .select({ sequence: sql<number>`coalesce(max(${runSteps.sequence}), 0)::int` })
+      .from(runSteps)
+      .where(eq(runSteps.runId, runId));
+    const [step] = await tx
+      .insert(runSteps)
+      .values({
+        runId,
+        sequence: (last?.sequence ?? 0) + 1,
+        kind: 'tool',
+        status: 'running',
+        input,
+        startedAt: sql`now()`,
+      })
+      .returning({ id: runSteps.id });
+    if (!step) return undefined;
+    await appendEvents(tx, runId, [
+      { type: 'step.started', stepId: step.id, payload: { kind: 'tool', ...input } },
+    ]);
+    return step.id;
+  });
+}
+
+export async function finishToolStep(
+  database: DatabaseHandle,
+  runId: string,
+  token: string,
+  stepId: string,
+  outcome:
+    | { status: 'succeeded'; output: Record<string, unknown>; usage?: Record<string, number> }
+    | { status: 'failed'; code: string; message: string }
+    | { status: 'cancelled' },
+) {
+  return database.db.transaction(async (tx) => {
+    const [run] = await tx.select().from(runs).where(validLease(runId, token)).for('update');
+    if (!run) return false;
+    const values = {
+      status: outcome.status,
+      output: outcome.status === 'succeeded' ? outcome.output : null,
+      usage: outcome.status === 'succeeded' ? (outcome.usage ?? {}) : {},
+      errorCode: outcome.status === 'failed' ? outcome.code : null,
+      errorMessage: outcome.status === 'failed' ? outcome.message : null,
+      completedAt: sql`now()`,
+    };
+    const [step] = await tx
+      .update(runSteps)
+      .set(values)
+      .where(
+        and(eq(runSteps.id, stepId), eq(runSteps.runId, runId), eq(runSteps.status, 'running')),
+      )
+      .returning({ id: runSteps.id });
+    if (!step) return false;
+    await appendEvents(tx, runId, [
+      {
+        type: `step.${outcome.status}`,
+        stepId,
+        payload:
+          outcome.status === 'failed'
+            ? { status: outcome.status, code: outcome.code }
+            : { status: outcome.status },
+      },
+    ]);
+    return true;
+  });
 }
 
 export async function claimRun(

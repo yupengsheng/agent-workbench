@@ -1,7 +1,14 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { and, eq } from 'drizzle-orm';
 import { parseChatRequest } from '@agent-workbench/contracts';
-import { ModelRequestError, OpenAICompatibleModelClient } from '@agent-workbench/runtime';
+import {
+  AgentLoopError,
+  executeAgentLoop,
+  ModelRequestError,
+  OpenAICompatibleModelClient,
+  type ToolCall,
+} from '@agent-workbench/runtime';
+import { createReadOnlyToolRegistry } from '@agent-workbench/tools';
 import type { DatabaseHandle } from '@agent-workbench/persistence/client';
 import {
   memberships,
@@ -15,6 +22,8 @@ import {
   finishRun,
   recoverExpiredRuns,
   renewLease,
+  finishToolStep,
+  startToolStep,
   type ClaimedRun,
 } from '@agent-workbench/persistence/runs';
 
@@ -127,21 +136,69 @@ export async function executeRun(
       baseUrl: connection.baseUrl,
       defaultModel: connection.modelIdentifier,
     });
-    const result = await client.complete({
-      messages: input.messages,
-      maxTokens: input.maxTokens ?? 1024,
-      ...(input.temperature === undefined ? {} : { temperature: input.temperature }),
-      signal: controller.signal,
-    });
+    const toolRegistry = createReadOnlyToolRegistry();
+    const toolDefinitions =
+      connection.capabilities.tools === true ? toolRegistry.definitions() : [];
+    const result = await executeAgentLoop(
+      client,
+      input.messages.map((message) => ({ role: message.role, content: message.content })),
+      {
+        tools: toolDefinitions,
+        model: connection.modelIdentifier,
+        ...(input.temperature === undefined ? {} : { temperature: input.temperature }),
+        maxTokens: input.maxTokens ?? 1024,
+        signal: controller.signal,
+        executor: {
+          execute: async (call: ToolCall, signal?: AbortSignal) => {
+            const stepId = await startToolStep(database, run.id, run.leaseToken, {
+              toolName: call.function.name,
+              toolCallId: call.id,
+              arguments: call.function.arguments.slice(0, 8_192),
+            });
+            if (!stepId) {
+              stop('lease_lost');
+              throw new Error('runner lease lost while starting tool step');
+            }
+            const observation = await toolRegistry.execute(
+              call.function.name,
+              call.function.arguments,
+              {
+                workspaceId: run.workspaceId,
+                ...(signal ? { signal } : {}),
+              },
+            );
+            const recorded = await finishToolStep(
+              database,
+              run.id,
+              run.leaseToken,
+              stepId,
+              observation.status === 'cancelled'
+                ? { status: 'cancelled' }
+                : {
+                    status: 'succeeded',
+                    output: {
+                      toolName: call.function.name,
+                      toolCallId: call.id,
+                      status: observation.status,
+                      content: observation.content,
+                      ...(observation.errorCode ? { errorCode: observation.errorCode } : {}),
+                      ...(observation.truncated ? { truncated: true } : {}),
+                    },
+                  },
+            );
+            if (!recorded) {
+              stop('lease_lost');
+              throw new Error('runner lease lost while finishing tool step');
+            }
+            return observation;
+          },
+        },
+        maxRounds: 8,
+        maxToolCalls: 16,
+        maxTotalTokens: 16_384,
+      },
+    );
     controller.signal.throwIfAborted();
-    if (!result.message.content?.trim() || result.message.toolCalls?.length) {
-      await finishRun(database, run.id, run.leaseToken, {
-        status: 'failed',
-        code: 'unsupported_model_output',
-        message: '模型未返回文本回复，当前运行尚不支持工具调用',
-      });
-      return;
-    }
     await finishRun(database, run.id, run.leaseToken, {
       status: 'succeeded',
       output: {
@@ -161,9 +218,10 @@ export async function executeRun(
     if (stopReason === 'cancelled') {
       await finishRun(database, run.id, run.leaseToken, { status: 'cancelled' });
     } else {
+      const executionCode = error instanceof AgentLoopError ? error.code : 'model_request_failed';
       await finishRun(database, run.id, run.leaseToken, {
         status: 'failed',
-        code: stopReason ?? 'model_request_failed',
+        code: stopReason ?? executionCode,
         message:
           stopReason === 'runner_stopped'
             ? '执行器正在停止，请重新提交任务'
@@ -171,7 +229,9 @@ export async function executeRun(
               ? '本次执行超过 60 秒，请重试'
               : error instanceof ModelRequestError
                 ? error.message
-                : '模型执行失败，请重试',
+                : error instanceof AgentLoopError
+                  ? error.message
+                  : '模型执行失败，请重试',
       });
     }
   } finally {

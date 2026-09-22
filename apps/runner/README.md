@@ -1,6 +1,6 @@
 # Runner 执行面
 
-M2 已提供独立单模型执行器：领取 queued Run、续租、调用 ModelPort、持久化终态、响应取消和回收过期租约。每个进程一个执行槽；多个进程通过行锁竞争任务，不共享内存状态。
+M2 已提供独立执行器：领取 queued Run、续租、调用 ModelPort、执行受限的 Think-Act-Observe 只读工具循环、持久化 Tool Step/事件、响应取消和回收过期租约。每个进程一个执行槽；多个进程通过行锁竞争任务，不共享内存状态。
 
 先从根目录构建，完成数据库迁移，再为 API 与 Runner 配置相同的 `DATABASE_URL` 和 `MODEL_SECRET_ENCRYPTION_KEY`。本地可让两个应用共享环境文件：
 
@@ -19,4 +19,4 @@ npm run start --workspace @agent-workbench/runner
 
 测试部署脚本同时启动 API、Web、Runner，Runner PID 与日志位于部署根目录 `runtime/runner.pid`、`runtime/runner.log`。仍使用试点进程管理，系统重启后的自动拉起和生产服务监管留待私有化交付。
 
-TAO、文件工具、Shell、审批和长任务检查点尚未实现。设计和协议迁移说明见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md)。
+工作区只读工具使用 `AGENT_WORKBENCH_WORKSPACE_ROOT/<workspaceId>` 映射目录；不存在的目录会返回结构化拒绝结果。单次运行最多 8 轮、16 次工具调用和 16,384 个累计 Token。Shell、写入、审批、实时事件和长任务检查点尚未实现。设计和协议迁移说明见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md) 与 [ADR-0007](../../docs/decisions/0007-tao-readonly-tools.md)。
