@@ -48,8 +48,17 @@ export interface ChatMessageInput {
   content: string;
 }
 
+export type ChatRoutingMode = 'fixed' | 'jev';
+
+export interface ChatRoutingInput {
+  mode: ChatRoutingMode;
+  /** Optional allow-list. Jev mode uses all active workspace models when omitted. */
+  candidateModelConnectionIds?: string[];
+}
+
 export interface ChatRequest {
-  modelConnectionId: string;
+  modelConnectionId?: string;
+  routing?: ChatRoutingInput;
   /** Continue an existing conversation owned by the current user. */
   sessionId?: string;
   messages: ChatMessageInput[];

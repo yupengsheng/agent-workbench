@@ -16,6 +16,7 @@ const activeModels = computed(() =>
   props.models.filter((model) => model.status === 'active' && model.secretConfigured),
 );
 const selectedModelId = ref('');
+const useJevRouting = computed(() => selectedModelId.value === '__jev__');
 const sessionId = ref('');
 const messages = ref<ChatMessageInput[]>([]);
 const draft = ref('');
@@ -32,7 +33,10 @@ const transcript = ref<HTMLElement>();
 watch(
   activeModels,
   (models) => {
-    if (!models.some((model) => model.id === selectedModelId.value)) {
+    if (
+      selectedModelId.value !== '__jev__' &&
+      !models.some((model) => model.id === selectedModelId.value)
+    ) {
       selectedModelId.value = models[0]?.id ?? '';
     }
   },
@@ -161,7 +165,7 @@ function clearConversation() {
 async function sendMessage() {
   const content = draft.value.trim();
   if (!content || pending.value || restoring.value) return;
-  if (!selectedModelId.value) {
+  if (!useJevRouting.value && !selectedModelId.value) {
     error.value = '请先在管理员控制台配置并启用一个模型连接';
     return;
   }
@@ -178,7 +182,9 @@ async function sendMessage() {
 
   try {
     const response = await chatWithModel(props.workspaceId, {
-      modelConnectionId: selectedModelId.value,
+      ...(useJevRouting.value
+        ? { routing: { mode: 'jev' as const } }
+        : { modelConnectionId: selectedModelId.value }),
       messages: history,
       ...(sessionId.value ? { sessionId: sessionId.value } : {}),
       maxTokens: 1024,
@@ -227,6 +233,7 @@ onUnmounted(() => {
       <label class="chat-model-picker">
         使用模型
         <select v-model="selectedModelId" :disabled="pending || restoring">
+          <option value="__jev__">Jev 自动选择</option>
           <option v-for="model in activeModels" :key="model.id" :value="model.id">
             {{ model.name }} · {{ model.modelIdentifier }}
           </option>
@@ -275,7 +282,10 @@ onUnmounted(() => {
           @keydown.meta.enter.prevent="sendMessage"
         ></textarea>
         <div class="chat-composer-footer">
-          <span class="muted">{{ selectedModel?.name }} · 服务端调用 · 浏览器不会接触 API Key</span>
+          <span class="muted"
+            >{{ useJevRouting ? 'Jev 自动选择' : selectedModel?.name }} · 服务端调用 ·
+            浏览器不会接触 API Key</span
+          >
           <button
             class="compact-primary"
             type="submit"

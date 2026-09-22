@@ -1,11 +1,13 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { parseChatRequest } from '@agent-workbench/contracts';
 import {
   AgentLoopError,
   executeAgentLoop,
   ModelRequestError,
+  ModelRouterError,
   OpenAICompatibleModelClient,
+  TypeSafeJevModelRouter,
   type ToolCall,
 } from '@agent-workbench/runtime';
 import { createReadOnlyToolRegistry } from '@agent-workbench/tools';
@@ -23,6 +25,7 @@ import {
   recoverExpiredRuns,
   renewLease,
   finishToolStep,
+  recordModelRoute,
   startToolStep,
   type ClaimedRun,
 } from '@agent-workbench/persistence/runs';
@@ -69,7 +72,7 @@ export async function executeRun(
   })();
   try {
     const input = parseChatRequest(run.input);
-    if (!input || !run.modelConnectionId) throw new Error('invalid execution input');
+    if (!input) throw new Error('invalid execution input');
     const [authorized] = await database.db
       .select({ id: users.id })
       .from(users)
@@ -92,25 +95,188 @@ export async function executeRun(
       });
       return;
     }
+    const runRouting = run.input.routing as
+      | {
+          mode?: unknown;
+          candidates?: unknown;
+        }
+      | undefined;
+    const routingMode = input.routing?.mode ?? 'fixed';
+    let selectedModelConnectionId = run.modelConnectionId;
+    let routeDecision:
+      | {
+          selectedId: string;
+          confidence: number;
+          probabilities: Record<string, number>;
+          router: 'jev';
+          routerModel: 'jev-latest';
+        }
+      | undefined;
+    let selectedSnapshot:
+      | {
+          id: string;
+          provider: string;
+          model: string;
+          baseUrl: string;
+          updatedAt: string;
+        }
+      | undefined;
+    if (routingMode === 'jev') {
+      if (runRouting?.mode !== 'jev' || !Array.isArray(runRouting.candidates)) {
+        throw new ModelRouterError('router_invalid_response', '任务缺少 Jev 候选快照');
+      }
+      const expectedCandidateIds = input.routing?.candidateModelConnectionIds;
+      const snapshots = runRouting.candidates.filter(
+        (
+          candidate,
+        ): candidate is {
+          id: string;
+          provider: string;
+          model: string;
+          baseUrl: string;
+          capabilities: Record<string, boolean>;
+          updatedAt: string;
+        } => {
+          if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate))
+            return false;
+          const item = candidate as Record<string, unknown>;
+          return (
+            typeof item.id === 'string' &&
+            typeof item.provider === 'string' &&
+            typeof item.model === 'string' &&
+            typeof item.baseUrl === 'string' &&
+            typeof item.updatedAt === 'string' &&
+            typeof item.capabilities === 'object' &&
+            item.capabilities !== null &&
+            !Array.isArray(item.capabilities) &&
+            Object.values(item.capabilities).every((value) => typeof value === 'boolean')
+          );
+        },
+      );
+      if (
+        snapshots.length < 1 ||
+        snapshots.length !== runRouting.candidates.length ||
+        !expectedCandidateIds ||
+        expectedCandidateIds.length !== snapshots.length ||
+        snapshots.some((snapshot) => !expectedCandidateIds.includes(snapshot.id))
+      ) {
+        throw new ModelRouterError('router_invalid_response', '任务的 Jev 候选快照无效');
+      }
+      const candidateRows = await database.db
+        .select()
+        .from(modelConnections)
+        .where(
+          and(
+            inArray(
+              modelConnections.id,
+              snapshots.map((candidate) => candidate.id),
+            ),
+            eq(modelConnections.workspaceId, run.workspaceId),
+            eq(modelConnections.status, 'active'),
+          ),
+        );
+      if (candidateRows.length !== snapshots.length) {
+        throw new ModelRouterError('router_no_candidate', 'Jev 候选模型已停用或不存在');
+      }
+      const rowsById = new Map(candidateRows.map((candidate) => [candidate.id, candidate]));
+      for (const snapshot of snapshots) {
+        const current = rowsById.get(snapshot.id);
+        if (
+          !current ||
+          current.provider !== snapshot.provider ||
+          current.modelIdentifier !== snapshot.model ||
+          current.baseUrl !== snapshot.baseUrl ||
+          current.updatedAt.toISOString() !== snapshot.updatedAt
+        ) {
+          throw new ModelRouterError('router_no_candidate', 'Jev 候选模型配置已变更，请重新提交');
+        }
+      }
+      const router = new TypeSafeJevModelRouter({
+        ...(process.env.TYPESAFE_API_KEY ? { apiKey: process.env.TYPESAFE_API_KEY } : {}),
+        timeoutMs: Number(process.env.TYPESAFE_ROUTER_TIMEOUT_MS ?? 5000),
+      });
+      routeDecision = await router.choose(
+        input.messages
+          .map((message) => `${message.role}: ${message.content}`)
+          .slice(-8)
+          .join('\n'),
+        snapshots.map((candidate) => ({
+          id: candidate.id,
+          provider: candidate.provider,
+          model: candidate.model,
+          capabilities: candidate.capabilities,
+        })),
+        controller.signal,
+      );
+      const minimumConfidence = Number(process.env.TYPESAFE_ROUTER_MIN_CONFIDENCE ?? 0.65);
+      if (!Number.isFinite(minimumConfidence) || routeDecision.confidence < minimumConfidence) {
+        throw new ModelRouterError(
+          'router_low_confidence',
+          `Jev 对模型选择的置信度不足（${routeDecision.confidence.toFixed(2)}），请手动选择模型重试`,
+        );
+      }
+      selectedModelConnectionId = routeDecision.selectedId;
+      if (!selectedModelConnectionId) {
+        throw new ModelRouterError('router_no_candidate', 'Jev 没有选择可用模型');
+      }
+      selectedSnapshot = snapshots.find((candidate) => candidate.id === selectedModelConnectionId);
+      if (!selectedSnapshot) {
+        throw new ModelRouterError('router_no_candidate', 'Jev 选择了未授权的模型');
+      }
+      const recorded = await recordModelRoute(
+        database,
+        run.id,
+        run.leaseToken,
+        selectedModelConnectionId,
+        {
+          router: routeDecision.router,
+          routerModel: routeDecision.routerModel,
+          selectedCandidateId: selectedModelConnectionId,
+          confidence: routeDecision.confidence,
+          probabilities: routeDecision.probabilities,
+          candidates: snapshots.map((candidate) => ({
+            id: candidate.id,
+            provider: candidate.provider,
+            model: candidate.model,
+          })),
+        },
+      );
+      if (!recorded) {
+        stop('lease_lost');
+        throw new Error('runner lease lost while recording model route');
+      }
+    } else if (!selectedModelConnectionId) {
+      throw new Error('invalid execution input');
+    }
+
     const [connection] = await database.db
       .select()
       .from(modelConnections)
       .where(
         and(
-          eq(modelConnections.id, run.modelConnectionId),
+          eq(modelConnections.id, selectedModelConnectionId),
           eq(modelConnections.workspaceId, run.workspaceId),
           eq(modelConnections.status, 'active'),
         ),
       )
       .limit(1);
     const config = run.input.modelConfig as Record<string, unknown> | undefined;
-    if (
-      !connection ||
-      connection.updatedAt.toISOString() !== config?.updatedAt ||
-      connection.provider !== config?.provider ||
-      connection.modelIdentifier !== config?.model ||
-      connection.baseUrl !== config?.baseUrl
-    ) {
+    const fixedConfigurationChanged =
+      routingMode === 'fixed' &&
+      (!connection ||
+        connection.updatedAt.toISOString() !== config?.updatedAt ||
+        connection.provider !== config?.provider ||
+        connection.modelIdentifier !== config?.model ||
+        connection.baseUrl !== config?.baseUrl);
+    const routedConfigurationChanged =
+      routingMode === 'jev' &&
+      (!connection ||
+        !selectedSnapshot ||
+        connection.provider !== selectedSnapshot.provider ||
+        connection.modelIdentifier !== selectedSnapshot.model ||
+        connection.baseUrl !== selectedSnapshot.baseUrl ||
+        connection.updatedAt.toISOString() !== selectedSnapshot.updatedAt);
+    if (fixedConfigurationChanged || routedConfigurationChanged || !connection) {
       await finishRun(database, run.id, run.leaseToken, {
         status: 'failed',
         code: 'model_configuration_changed',
@@ -218,7 +384,12 @@ export async function executeRun(
     if (stopReason === 'cancelled') {
       await finishRun(database, run.id, run.leaseToken, { status: 'cancelled' });
     } else {
-      const executionCode = error instanceof AgentLoopError ? error.code : 'model_request_failed';
+      const executionCode =
+        error instanceof ModelRouterError
+          ? error.code
+          : error instanceof AgentLoopError
+            ? error.code
+            : 'model_request_failed';
       await finishRun(database, run.id, run.leaseToken, {
         status: 'failed',
         code: stopReason ?? executionCode,
@@ -227,11 +398,13 @@ export async function executeRun(
             ? '执行器正在停止，请重新提交任务'
             : stopReason === 'run_timeout'
               ? '本次执行超过 60 秒，请重试'
-              : error instanceof ModelRequestError
+              : error instanceof ModelRouterError
                 ? error.message
-                : error instanceof AgentLoopError
+                : error instanceof ModelRequestError
                   ? error.message
-                  : '模型执行失败，请重试',
+                  : error instanceof AgentLoopError
+                    ? error.message
+                    : '模型执行失败，请重试',
       });
     }
   } finally {

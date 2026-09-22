@@ -5,3 +5,4 @@ coverage/
 .data/
 design/public/
 package-lock.json
+.agents/

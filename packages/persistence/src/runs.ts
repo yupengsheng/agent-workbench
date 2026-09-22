@@ -209,6 +209,26 @@ export async function renewLease(database: DatabaseHandle, runId: string, token:
   return row;
 }
 
+/** Persist the selected model and Jev decision while holding the runner fence. */
+export async function recordModelRoute(
+  database: DatabaseHandle,
+  runId: string,
+  token: string,
+  modelConnectionId: string,
+  payload: Record<string, unknown>,
+) {
+  return database.db.transaction(async (tx) => {
+    const [run] = await tx.select().from(runs).where(validLease(runId, token)).for('update');
+    if (!run) return false;
+    await tx
+      .update(runs)
+      .set({ modelConnectionId, updatedAt: sql`now()` })
+      .where(eq(runs.id, runId));
+    await appendEvents(tx, runId, [{ type: 'model.routed', payload }]);
+    return true;
+  });
+}
+
 export async function finishRun(
   database: DatabaseHandle,
   runId: string,

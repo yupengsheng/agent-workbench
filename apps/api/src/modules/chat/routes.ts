@@ -96,29 +96,73 @@ export async function registerChatRoutes(
         return invalidRequest(reply, '请提供有效的模型连接和对话消息，最后一条消息必须来自用户');
       }
 
-      const [connection] = await context.database.db
-        .select()
-        .from(modelConnections)
-        .where(
-          and(
-            eq(modelConnections.id, body.modelConnectionId),
-            eq(modelConnections.workspaceId, request.params.workspaceId),
-            eq(modelConnections.status, 'active'),
-          ),
-        )
-        .limit(1);
-      if (!connection) return connectionUnavailable(reply);
+      const routingMode = body.routing?.mode ?? 'fixed';
+      const requestedCandidateIds = body.routing?.candidateModelConnectionIds;
+      const connections =
+        routingMode === 'fixed'
+          ? await context.database.db
+              .select()
+              .from(modelConnections)
+              .where(
+                and(
+                  eq(modelConnections.id, body.modelConnectionId!),
+                  eq(modelConnections.workspaceId, request.params.workspaceId),
+                  eq(modelConnections.status, 'active'),
+                ),
+              )
+              .limit(1)
+          : requestedCandidateIds
+            ? await context.database.db
+                .select()
+                .from(modelConnections)
+                .where(
+                  and(
+                    inArray(modelConnections.id, requestedCandidateIds),
+                    eq(modelConnections.workspaceId, request.params.workspaceId),
+                    eq(modelConnections.status, 'active'),
+                  ),
+                )
+            : await context.database.db
+                .select()
+                .from(modelConnections)
+                .where(
+                  and(
+                    eq(modelConnections.workspaceId, request.params.workspaceId),
+                    eq(modelConnections.status, 'active'),
+                  ),
+                );
+      if (connections.length === 0) return connectionUnavailable(reply);
+      if (requestedCandidateIds && connections.length !== requestedCandidateIds.length) {
+        return connectionUnavailable(reply);
+      }
+      if (routingMode === 'jev' && connections.length > 16) {
+        return invalidRequest(reply, '自动选择最多支持 16 个候选模型，请缩小候选范围');
+      }
 
-      // Resolve and validate the server-side secret before persisting a run.
+      // Validate every candidate's server-side secret before persisting a run.
       // Configuration errors should not leave an orphaned run in `running`.
-      let apiKey: string | undefined;
       try {
-        if (connection.secretRef === 'managed') getModelSecretKey();
-        apiKey = await resolveModelSecret(connection.secretRef, connection.secretCiphertext);
+        for (const connection of connections) {
+          if (connection.secretRef === 'managed') getModelSecretKey();
+          const apiKey = await resolveModelSecret(
+            connection.secretRef,
+            connection.secretCiphertext,
+          );
+          if (!apiKey) return connectionUnavailable(reply);
+        }
       } catch {
         return secretStoreUnavailable(reply);
       }
-      if (!apiKey) return connectionUnavailable(reply);
+      const connection = connections[0];
+      if (!connection) return connectionUnavailable(reply);
+      const candidateSnapshots = connections.map((candidate) => ({
+        id: candidate.id,
+        provider: candidate.provider,
+        model: candidate.modelIdentifier,
+        baseUrl: candidate.baseUrl,
+        capabilities: candidate.capabilities,
+        updatedAt: candidate.updatedAt.toISOString(),
+      }));
 
       let sessionId = body.sessionId;
       const firstUserMessage = body.messages.find((message) => message.role === 'user');
@@ -164,19 +208,32 @@ export async function registerChatRoutes(
             workspaceId: request.params.workspaceId,
             sessionId,
             triggerUserId: context.user.id,
-            modelConnectionId: connection.id,
+            modelConnectionId: routingMode === 'fixed' ? connection.id : null,
             status: 'queued',
             input: {
               messages: body.messages,
-              modelConnectionId: connection.id,
+              ...(routingMode === 'fixed' ? { modelConnectionId: connection.id } : {}),
+              ...(routingMode === 'jev'
+                ? {
+                    routing: {
+                      mode: 'jev',
+                      candidateModelConnectionIds: connections.map((item) => item.id),
+                      candidates: candidateSnapshots,
+                    },
+                  }
+                : {}),
               maxTokens: body.maxTokens ?? 1024,
               ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
-              modelConfig: {
-                provider: connection.provider,
-                model: connection.modelIdentifier,
-                baseUrl: connection.baseUrl,
-                updatedAt: connection.updatedAt.toISOString(),
-              },
+              ...(routingMode === 'fixed'
+                ? {
+                    modelConfig: {
+                      provider: connection.provider,
+                      model: connection.modelIdentifier,
+                      baseUrl: connection.baseUrl,
+                      updatedAt: connection.updatedAt.toISOString(),
+                    },
+                  }
+                : {}),
             },
           })
           .returning({ id: runs.id });
@@ -189,7 +246,12 @@ export async function registerChatRoutes(
             sequence: 1,
             kind: 'model',
             status: 'queued',
-            input: { messages: body.messages, modelConnectionId: connection.id },
+            input: {
+              messages: body.messages,
+              ...(routingMode === 'fixed'
+                ? { modelConnectionId: connection.id }
+                : { routing: { mode: 'jev', candidates: candidateSnapshots } }),
+            },
           })
           .returning({ id: runSteps.id });
         if (!step) throw new Error('run step insert returned no row');
@@ -199,7 +261,10 @@ export async function registerChatRoutes(
             runId: run.id,
             sequence: 1,
             type: 'run.created',
-            payload: { modelConnectionId: connection.id },
+            payload:
+              routingMode === 'fixed'
+                ? { modelConnectionId: connection.id }
+                : { routing: 'jev', candidateCount: candidateSnapshots.length },
           },
           {
             runId: run.id,

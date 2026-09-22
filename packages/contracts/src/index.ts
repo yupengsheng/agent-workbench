@@ -17,6 +17,8 @@ export type {
 export type {
   ChatMessageInput,
   ChatMessageRole,
+  ChatRoutingInput,
+  ChatRoutingMode,
   ChatRequest,
   ChatResponse,
   ModelConnectionInput,
