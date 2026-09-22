@@ -22,6 +22,7 @@ const messages = ref<ChatMessageInput[]>([]);
 const draft = ref('');
 const pending = ref(false);
 const activeRunId = ref('');
+const resolvedModelId = ref('');
 const runState = ref('');
 const cancelling = ref(false);
 let disposed = false;
@@ -45,6 +46,9 @@ watch(
 
 const selectedModel = computed(() =>
   activeModels.value.find((model) => model.id === selectedModelId.value),
+);
+const resolvedModel = computed(() =>
+  props.models.find((model) => model.id === resolvedModelId.value),
 );
 
 const sessionStorageKey = computed(() => `agent-workbench:session:${props.workspaceId}`);
@@ -88,6 +92,7 @@ async function restoreSession() {
 function applyRun(detail: RunDetailResponse) {
   if (disposed) return;
   activeRunId.value = detail.run.id;
+  resolvedModelId.value = detail.run.modelConnectionId ?? '';
   const saved = detail.run.input.messages;
   const restored = Array.isArray(saved) ? saved.filter(isMessage) : [];
   const output = detail.run.output?.message;
@@ -156,6 +161,7 @@ function clearConversation() {
   messages.value = [];
   sessionId.value = '';
   activeRunId.value = '';
+  resolvedModelId.value = '';
   runState.value = '';
   window.sessionStorage.removeItem(sessionStorageKey.value);
   draft.value = '';
@@ -270,6 +276,9 @@ onUnmounted(() => {
       </div>
 
       <p v-if="!pending && runState" role="status">{{ runState }}</p>
+      <p v-if="!pending && resolvedModelId" class="muted" role="status">
+        本次使用：{{ resolvedModel?.name ?? resolvedModel?.modelIdentifier ?? resolvedModelId }}
+      </p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <form class="chat-composer" @submit.prevent="sendMessage">
         <textarea
