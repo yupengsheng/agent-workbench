@@ -40,7 +40,16 @@ test('Jev automatic routing submits an allow-list-free routing request', async (
           cancelRequestedAt: null,
         },
         steps: [],
-        events: [],
+        events: [
+          {
+            id: 'event-route',
+            type: 'model.routed',
+            payload: {
+              selectedCandidateId: 'model-one',
+              candidates: [{ id: 'model-one', provider: 'fixture', model: 'fixture' }],
+            },
+          },
+        ],
       };
     } else if (path.includes('/sessions/')) {
       body = {
@@ -64,4 +73,5 @@ test('Jev automatic routing submits an allow-list-free routing request', async (
   expect(chatRequest?.modelConnectionId).toBeUndefined();
   expect(chatRequest?.routing).toEqual({ mode: 'jev' });
   await expect(page.getByText('本次使用：Fixture model', { exact: true })).toBeVisible();
+  await expect(page.getByText('Jev 已选择 fixture/fixture', { exact: true })).toBeVisible();
 });

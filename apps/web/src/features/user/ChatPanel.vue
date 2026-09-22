@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type {
   ChatMessageInput,
   ModelConnectionSummary,
+  RunEventSummary,
   RunDetailResponse,
 } from '@agent-workbench/contracts';
 import { chatWithModel, getSession, getRun, cancelRun } from '../../lib/api';
@@ -23,6 +24,7 @@ const draft = ref('');
 const pending = ref(false);
 const activeRunId = ref('');
 const resolvedModelId = ref('');
+const runEvents = ref<RunEventSummary[]>([]);
 const runState = ref('');
 const cancelling = ref(false);
 let disposed = false;
@@ -63,6 +65,47 @@ function isMessage(value: unknown): value is ChatMessageInput {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function eventLabel(event: RunEventSummary): string {
+  const payload = event.payload;
+  if (event.type === 'run.created') return '任务已创建';
+  if (event.type === 'step.queued') return '模型步骤已排队';
+  if (event.type === 'model.routed') {
+    const selectedId = payload.selectedCandidateId;
+    const candidates = payload.candidates;
+    if (typeof selectedId === 'string' && Array.isArray(candidates)) {
+      const selected = candidates.find(
+        (candidate) => isRecord(candidate) && candidate.id === selectedId,
+      );
+      if (isRecord(selected)) {
+        const provider = typeof selected.provider === 'string' ? selected.provider : '';
+        const model = typeof selected.model === 'string' ? selected.model : '';
+        if (provider || model) return `Jev 已选择 ${provider}/${model}`;
+      }
+    }
+    return 'Jev 已完成模型选择';
+  }
+  if (event.type === 'step.started' && typeof payload.toolName === 'string') {
+    return `正在执行工具：${payload.toolName}`;
+  }
+  if (event.type === 'step.succeeded' && typeof payload.status === 'string') {
+    return '工具步骤已完成';
+  }
+  if (event.type === 'step.completed') return '模型步骤已完成';
+  if (event.type === 'step.cancelled') return '步骤已取消';
+  if (event.type === 'run.started') return '执行器已开始处理任务';
+  if (event.type === 'run.succeeded') return '任务已完成';
+  if (event.type === 'run.cancelled') return '任务已取消';
+  if (event.type === 'run.failed') {
+    return typeof payload.code === 'string' ? `任务失败：${payload.code}` : '任务失败';
+  }
+  if (event.type === 'run.cancel_requested') return '已请求停止任务';
+  return event.type;
+}
+
 async function restoreSession() {
   if (!props.workspaceId) return;
   const storedSessionId = window.sessionStorage.getItem(sessionStorageKey.value);
@@ -93,6 +136,7 @@ function applyRun(detail: RunDetailResponse) {
   if (disposed) return;
   activeRunId.value = detail.run.id;
   resolvedModelId.value = detail.run.modelConnectionId ?? '';
+  runEvents.value = detail.events;
   const saved = detail.run.input.messages;
   const restored = Array.isArray(saved) ? saved.filter(isMessage) : [];
   const output = detail.run.output?.message;
@@ -162,6 +206,7 @@ function clearConversation() {
   sessionId.value = '';
   activeRunId.value = '';
   resolvedModelId.value = '';
+  runEvents.value = [];
   runState.value = '';
   window.sessionStorage.removeItem(sessionStorageKey.value);
   draft.value = '';
@@ -279,6 +324,15 @@ onUnmounted(() => {
       <p v-if="!pending && resolvedModelId" class="muted" role="status">
         本次使用：{{ resolvedModel?.name ?? resolvedModel?.modelIdentifier ?? resolvedModelId }}
       </p>
+      <section v-if="runEvents.length" class="run-events" aria-label="任务过程">
+        <p class="run-events-heading">任务过程</p>
+        <ol>
+          <li v-for="event in runEvents" :key="event.id">
+            <span class="run-event-dot" aria-hidden="true"></span>
+            <span>{{ eventLabel(event) }}</span>
+          </li>
+        </ol>
+      </section>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <form class="chat-composer" @submit.prevent="sendMessage">
         <textarea
