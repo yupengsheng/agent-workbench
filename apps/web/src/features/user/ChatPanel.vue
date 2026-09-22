@@ -6,7 +6,7 @@ import type {
   RunEventSummary,
   RunDetailResponse,
 } from '@agent-workbench/contracts';
-import { chatWithModel, getSession, getRun, cancelRun } from '../../lib/api';
+import { chatWithModel, getSession, getRun, cancelRun, openRunEventStream } from '../../lib/api';
 
 const props = defineProps<{
   workspaceId: string;
@@ -29,6 +29,9 @@ const runState = ref('');
 const cancelling = ref(false);
 let disposed = false;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
+let eventStream: EventSource | undefined;
+let eventStreamRunId = '';
+let eventStreamFailed = false;
 const restoring = ref(false);
 const error = ref('');
 const transcript = ref<HTMLElement>();
@@ -106,6 +109,51 @@ function eventLabel(event: RunEventSummary): string {
   return event.type;
 }
 
+function closeEventStream() {
+  eventStream?.close();
+  eventStream = undefined;
+  eventStreamRunId = '';
+}
+
+function appendRunEvent(event: RunEventSummary) {
+  const existing = runEvents.value.findIndex((item) => item.id === event.id);
+  if (existing >= 0) {
+    runEvents.value.splice(existing, 1, event);
+  } else {
+    runEvents.value.push(event);
+  }
+  runEvents.value.sort((left, right) => left.sequence - right.sequence);
+}
+
+function ensureEventStream() {
+  if (
+    disposed ||
+    !pending.value ||
+    !activeRunId.value ||
+    eventStreamFailed ||
+    eventStreamRunId === activeRunId.value
+  ) {
+    return;
+  }
+  const runId = activeRunId.value;
+  eventStreamRunId = runId;
+  eventStream = openRunEventStream(props.workspaceId, runId, {
+    onEvent: appendRunEvent,
+    onEnd: () => {
+      eventStream = undefined;
+      eventStreamRunId = '';
+      void pollRun();
+    },
+    onError: () => {
+      if (eventStreamRunId === runId) {
+        closeEventStream();
+        eventStreamFailed = true;
+        schedulePoll();
+      }
+    },
+  });
+}
+
 async function restoreSession() {
   if (!props.workspaceId) return;
   const storedSessionId = window.sessionStorage.getItem(sessionStorageKey.value);
@@ -134,6 +182,10 @@ async function restoreSession() {
 
 function applyRun(detail: RunDetailResponse) {
   if (disposed) return;
+  if (activeRunId.value && activeRunId.value !== detail.run.id) {
+    closeEventStream();
+    eventStreamFailed = false;
+  }
   activeRunId.value = detail.run.id;
   resolvedModelId.value = detail.run.modelConnectionId ?? '';
   runEvents.value = detail.events;
@@ -155,15 +207,21 @@ function applyRun(detail: RunDetailResponse) {
           : '';
   error.value =
     detail.run.status === 'failed' ? (detail.run.errorMessage ?? '任务执行失败，请重试') : '';
+  if (pending.value) ensureEventStream();
+  else closeEventStream();
   void scrollTranscript();
 }
 
 function schedulePoll() {
   if (disposed || !pending.value) return;
+  ensureEventStream();
   if (pollTimer) clearTimeout(pollTimer);
-  pollTimer = setTimeout(() => {
-    void pollRun();
-  }, 1000);
+  pollTimer = setTimeout(
+    () => {
+      void pollRun();
+    },
+    eventStream && !eventStreamFailed ? 5000 : 1000,
+  );
 }
 
 async function pollRun() {
@@ -207,6 +265,8 @@ function clearConversation() {
   activeRunId.value = '';
   resolvedModelId.value = '';
   runEvents.value = [];
+  closeEventStream();
+  eventStreamFailed = false;
   runState.value = '';
   window.sessionStorage.removeItem(sessionStorageKey.value);
   draft.value = '';
@@ -244,6 +304,7 @@ async function sendMessage() {
     window.sessionStorage.setItem(sessionStorageKey.value, response.sessionId);
     if (disposed) return;
     activeRunId.value = response.runId;
+    eventStreamFailed = false;
     runState.value = '任务已排队，等待执行…';
     schedulePoll();
   } catch (requestError) {
@@ -258,6 +319,7 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true;
   if (pollTimer) clearTimeout(pollTimer);
+  closeEventStream();
 });
 </script>
 

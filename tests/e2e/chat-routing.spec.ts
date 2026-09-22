@@ -29,6 +29,25 @@ test('Jev automatic routing submits an allow-list-free routing request', async (
     } else if (path.endsWith('/chat')) {
       chatRequest = request.postDataJSON() as Record<string, unknown>;
       body = { sessionId: 'session-1', runId: 'run-1', stepId: 'step-1', status: 'queued' };
+    } else if (path.endsWith('/events')) {
+      const event = {
+        id: 'event-route',
+        runId: 'run-1',
+        sequence: 1,
+        type: 'model.routed',
+        stepId: null,
+        payload: {
+          selectedCandidateId: 'model-one',
+          candidates: [{ id: 'model-one', provider: 'fixture', model: 'fixture' }],
+        },
+        createdAt: new Date().toISOString(),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: `id: 1\nevent: run\ndata: ${JSON.stringify(event)}\n\nevent: end\ndata: {"status":"succeeded"}\n\n`,
+      });
+      return;
     } else if (path.includes('/runs/')) {
       body = {
         run: {

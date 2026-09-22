@@ -9,7 +9,7 @@ import type {
   SessionSummary,
 } from '@agent-workbench/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { DatabaseHandle } from '../../db/client.js';
 import { chatSessions, runEvents, runs, runSteps } from '../../db/schema.js';
 import { getAuthenticatedUser } from '../identity/service.js';
@@ -21,6 +21,10 @@ interface WorkspaceParams {
 
 interface SessionParams extends WorkspaceParams {
   sessionId: string;
+}
+
+interface RunParams extends WorkspaceParams {
+  runId: string;
 }
 
 function isUuid(value: string): boolean {
@@ -126,6 +130,10 @@ function toEvent(row: typeof runEvents.$inferSelect): RunEventSummary {
   };
 }
 
+function terminalRunStatus(status: string): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'cancelled';
+}
+
 async function runDetail(
   database: DatabaseHandle,
   row: typeof runs.$inferSelect,
@@ -149,6 +157,113 @@ export async function registerRunRoutes(
   app: FastifyInstance,
   database: DatabaseHandle | undefined,
 ) {
+  app.get(
+    '/api/v1/workspaces/:workspaceId/runs/:runId/events',
+    async (request: FastifyRequest<{ Params: RunParams }>, reply) => {
+      const context = await authenticateWorkspace(
+        request,
+        reply,
+        database,
+        request.params.workspaceId,
+      );
+      if (!context) return;
+      if (!isUuid(request.params.runId)) {
+        return reply.code(404).send({ error: { code: 'run_not_found', message: '任务不存在' } });
+      }
+
+      const [owned] = await context.database.db
+        .select({ run: runs })
+        .from(runs)
+        .innerJoin(chatSessions, eq(chatSessions.id, runs.sessionId))
+        .where(
+          and(
+            eq(runs.id, request.params.runId),
+            eq(runs.workspaceId, request.params.workspaceId),
+            eq(chatSessions.workspaceId, request.params.workspaceId),
+            eq(chatSessions.ownerUserId, context.user.id),
+          ),
+        )
+        .limit(1);
+      if (!owned) {
+        return reply.code(404).send({ error: { code: 'run_not_found', message: '任务不存在' } });
+      }
+
+      const rawCursor = request.headers['last-event-id'];
+      const cursorValue = Array.isArray(rawCursor) ? rawCursor[0] : rawCursor;
+      const parsedCursor = cursorValue ? Number(cursorValue) : 0;
+      let cursor = Number.isInteger(parsedCursor) && parsedCursor >= 0 ? parsedCursor : 0;
+      let closed = false;
+      let polling = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      reply.hijack();
+      const response = reply.raw;
+      response.writeHead(200, {
+        'cache-control': 'no-cache, no-store',
+        connection: 'keep-alive',
+        'content-type': 'text/event-stream; charset=utf-8',
+        'x-accel-buffering': 'no',
+      });
+      response.flushHeaders?.();
+
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        if (timer) clearTimeout(timer);
+        response.end();
+      };
+      request.raw.once('close', close);
+
+      const poll = async () => {
+        if (closed || polling) return;
+        polling = true;
+        try {
+          const events = await context.database.db
+            .select()
+            .from(runEvents)
+            .where(
+              and(
+                eq(runEvents.runId, request.params.runId),
+                sql`${runEvents.sequence} > ${cursor}`,
+              ),
+            )
+            .orderBy(asc(runEvents.sequence))
+            .limit(100);
+          for (const event of events) {
+            if (closed) return;
+            cursor = event.sequence;
+            response.write(
+              `id: ${event.sequence}\nevent: run\ndata: ${JSON.stringify(toEvent(event))}\n\n`,
+            );
+          }
+          if (!closed) response.write(': heartbeat\n\n');
+          const [current] = await context.database.db
+            .select({ status: runs.status })
+            .from(runs)
+            .where(eq(runs.id, request.params.runId))
+            .limit(1);
+          if (!current || terminalRunStatus(current.status)) {
+            if (!closed) {
+              response.write(
+                `event: end\ndata: ${JSON.stringify({ status: current?.status ?? 'failed' })}\n\n`,
+              );
+            }
+            close();
+            return;
+          }
+        } catch {
+          close();
+          return;
+        } finally {
+          polling = false;
+        }
+        if (!closed) timer = setTimeout(() => void poll(), 1000);
+      };
+
+      void poll();
+    },
+  );
+
   for (const method of ['GET', 'POST'] as const) {
     app.route<{ Params: WorkspaceParams & { runId: string } }>({
       method,

@@ -156,3 +156,36 @@ export function cancelRun(workspaceId: string, runId: string): Promise<RunDetail
     { method: 'POST' },
   );
 }
+
+export function openRunEventStream(
+  workspaceId: string,
+  runId: string,
+  handlers: {
+    onEvent: (event: RunDetailResponse['events'][number]) => void;
+    onEnd: () => void;
+    onError: () => void;
+  },
+): EventSource {
+  const source = new EventSource(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}/events`,
+    { withCredentials: true },
+  );
+  source.addEventListener('run', (event) => {
+    try {
+      handlers.onEvent(
+        JSON.parse((event as MessageEvent<string>).data) as RunDetailResponse['events'][number],
+      );
+    } catch {
+      handlers.onError();
+    }
+  });
+  source.addEventListener('end', () => {
+    source.close();
+    handlers.onEnd();
+  });
+  source.onerror = () => {
+    source.close();
+    handlers.onError();
+  };
+  return source;
+}
