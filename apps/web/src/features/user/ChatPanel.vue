@@ -13,6 +13,20 @@ const props = defineProps<{
   models: ModelConnectionSummary[];
 }>();
 
+const emit = defineEmits<{
+  'inspector-update': [
+    state: {
+      pending: boolean;
+      runState: string;
+      activeRunId: string;
+      resolvedModelId: string;
+      selectedModelId: string;
+      events: RunEventSummary[];
+      error: string;
+    },
+  ];
+}>();
+
 const activeModels = computed(() =>
   props.models.filter((model) => model.status === 'active' && model.secretConfigured),
 );
@@ -36,6 +50,18 @@ const restoring = ref(false);
 const error = ref('');
 const transcript = ref<HTMLElement>();
 
+function emitInspector() {
+  emit('inspector-update', {
+    pending: pending.value,
+    runState: runState.value,
+    activeRunId: activeRunId.value,
+    resolvedModelId: resolvedModelId.value,
+    selectedModelId: selectedModelId.value,
+    events: [...runEvents.value],
+    error: error.value,
+  });
+}
+
 watch(
   activeModels,
   (models) => {
@@ -45,9 +71,12 @@ watch(
     ) {
       selectedModelId.value = models[0]?.id ?? '';
     }
+    emitInspector();
   },
   { immediate: true },
 );
+
+watch(selectedModelId, emitInspector);
 
 const selectedModel = computed(() =>
   activeModels.value.find((model) => model.id === selectedModelId.value),
@@ -123,6 +152,7 @@ function appendRunEvent(event: RunEventSummary) {
     runEvents.value.push(event);
   }
   runEvents.value.sort((left, right) => left.sequence - right.sequence);
+  emitInspector();
 }
 
 function ensureEventStream() {
@@ -209,6 +239,7 @@ function applyRun(detail: RunDetailResponse) {
     detail.run.status === 'failed' ? (detail.run.errorMessage ?? '任务执行失败，请重试') : '';
   if (pending.value) ensureEventStream();
   else closeEventStream();
+  emitInspector();
   void scrollTranscript();
 }
 
@@ -271,6 +302,7 @@ function clearConversation() {
   window.sessionStorage.removeItem(sessionStorageKey.value);
   draft.value = '';
   error.value = '';
+  emitInspector();
 }
 
 async function sendMessage() {
@@ -289,6 +321,7 @@ async function sendMessage() {
   messages.value.push(userMessage);
   draft.value = '';
   pending.value = true;
+  emitInspector();
   await scrollTranscript();
 
   try {
@@ -306,10 +339,12 @@ async function sendMessage() {
     activeRunId.value = response.runId;
     eventStreamFailed = false;
     runState.value = '任务已排队，等待执行…';
+    emitInspector();
     schedulePoll();
   } catch (requestError) {
     error.value = requestError instanceof Error ? requestError.message : '对话请求失败，请稍后重试';
     pending.value = false;
+    emitInspector();
   }
 }
 

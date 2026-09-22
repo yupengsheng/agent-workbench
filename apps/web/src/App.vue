@@ -4,6 +4,7 @@ import type {
   AgentListResponse,
   AuthResponse,
   ModelConnectionListResponse,
+  RunEventSummary,
   WorkspaceListResponse,
 } from '@agent-workbench/contracts';
 import {
@@ -17,6 +18,8 @@ import {
 } from './lib/api';
 import ModelConnectionsPanel from './features/admin/ModelConnectionsPanel.vue';
 import ChatPanel from './features/user/ChatPanel.vue';
+import WorkbenchShell from './features/layout/WorkbenchShell.vue';
+import RunInspector from './features/layout/RunInspector.vue';
 
 type Route = 'user' | 'admin';
 type LoadState = 'loading' | 'ready' | 'error';
@@ -36,6 +39,16 @@ const account = ref('');
 const password = ref('');
 const loginPending = ref(false);
 const logoutPending = ref(false);
+const chatResetKey = ref(0);
+const inspector = ref({
+  pending: false,
+  runState: '',
+  activeRunId: '',
+  resolvedModelId: '',
+  selectedModelId: '__jev__',
+  events: [] as RunEventSummary[],
+  error: '',
+});
 
 const selectedWorkspace = computed(() =>
   workspaces.value.find((workspace) => workspace.id === selectedWorkspaceId.value),
@@ -137,7 +150,25 @@ function setRoute(nextRoute: Route) {
   window.history.pushState({}, '', nextRoute === 'admin' ? '/admin' : '/app');
 }
 
-async function selectWorkspace() {
+function startNewSession() {
+  chatResetKey.value += 1;
+  inspector.value = {
+    pending: false,
+    runState: '',
+    activeRunId: '',
+    resolvedModelId: '',
+    selectedModelId: '__jev__',
+    events: [],
+    error: '',
+  };
+}
+
+function updateInspector(state: typeof inspector.value) {
+  inspector.value = state;
+}
+
+async function selectWorkspace(workspaceId = selectedWorkspaceId.value) {
+  selectedWorkspaceId.value = workspaceId;
   window.sessionStorage.setItem(
     `agent-workbench:workspace:${currentUser.value?.id}`,
     selectedWorkspaceId.value,
@@ -155,7 +186,7 @@ onMounted(async () => {
 
 <template>
   <div class="app-shell">
-    <header class="topbar">
+    <header v-if="authState !== 'ready'" class="topbar">
       <a class="brand" href="/app" aria-label="Agent Workbench 用户工作台"
         ><span class="brand-mark" aria-hidden="true">A</span
         ><span>Agent Workbench<small>私有化 Agent 工作台</small></span></a
@@ -223,88 +254,111 @@ onMounted(async () => {
         </form>
       </section>
 
-      <section v-else class="workspace-layout">
-        <aside class="side-panel">
-          <p class="eyebrow">{{ route === 'admin' ? 'ADMIN CONSOLE' : 'USER WORKSPACE' }}</p>
-          <h1>{{ route === 'admin' ? '治理控制台' : '开始一个任务' }}</h1>
-          <p class="muted">{{ currentUser?.displayName }} · {{ currentUser?.email }}</p>
-          <label class="workspace-picker"
-            >工作空间<select v-model="selectedWorkspaceId" @change="selectWorkspace">
-              <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
-                {{ workspace.name }} · {{ workspace.role }}
-              </option>
-            </select></label
-          >
-          <div class="side-links">
-            <a :class="{ selected: route === 'user' }" href="/app" @click.prevent="setRoute('user')"
-              >任务与产物</a
-            ><a
-              :class="{ selected: route === 'admin' }"
-              href="/admin"
-              @click.prevent="setRoute('admin')"
-              >配置与治理</a
-            ><span>飞书通道 · 即将接入</span>
+      <WorkbenchShell
+        v-else
+        :route="route"
+        :current-user="currentUser"
+        :workspaces="workspaces"
+        :selected-workspace-id="selectedWorkspaceId"
+        :selected-workspace="selectedWorkspace"
+        :health-state="healthState"
+        :health-detail="healthDetail"
+        @navigate="setRoute"
+        @logout="submitLogout"
+        @workspace-change="selectWorkspace"
+        @new-session="startNewSession"
+      >
+        <p v-if="dataError" class="form-error mao-page-error" role="alert">{{ dataError }}</p>
+        <template v-if="route === 'admin'">
+          <div class="mao-stat-strip">
+            <article>
+              <span>模型连接</span><strong>{{ models.length }}</strong
+              ><small>服务端安全引用</small>
+            </article>
+            <article>
+              <span>Agent</span><strong>{{ agents.length }}</strong
+              ><small>可发布的工作流</small>
+            </article>
+            <article><span>通道</span><strong>0</strong><small>飞书适配器规划中</small></article>
           </div>
-        </aside>
-        <div class="content-panel">
-          <div class="content-heading">
-            <div>
-              <p class="eyebrow">{{ selectedWorkspace?.name ?? '未选择工作空间' }}</p>
-              <h2>{{ route === 'admin' ? '模型与 Agent 配置' : '任务工作台' }}</h2>
-            </div>
-            <span class="role-badge">{{ selectedWorkspace?.role ?? '无工作空间' }}</span>
+          <ModelConnectionsPanel
+            :workspace-id="selectedWorkspaceId"
+            :models="models"
+            :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
+            @changed="loadWorkspaceData(selectedWorkspaceId)"
+          />
+        </template>
+        <template v-else>
+          <ChatPanel
+            :key="`${currentUser?.id}:${selectedWorkspaceId}:${chatResetKey}`"
+            :workspace-id="selectedWorkspaceId"
+            :models="models"
+            @inspector-update="updateInspector"
+          />
+          <div class="mao-stat-strip compact">
+            <article>
+              <span>可用模型</span
+              ><strong>{{
+                models.filter((model) => model.status === 'active' && model.secretConfigured).length
+              }}</strong
+              ><small>由管理员配置并启用</small>
+            </article>
+            <article>
+              <span>可用 Agent</span><strong>{{ agents.length }}</strong
+              ><small>可用于后续任务编排</small>
+            </article>
+            <article>
+              <span>执行循环</span><strong>TAO</strong><small>Think · Act · Observe</small>
+            </article>
           </div>
-          <p v-if="dataError" class="form-error" role="alert">{{ dataError }}</p>
-          <template v-if="route === 'admin'"
-            ><div class="stat-grid">
-              <article>
-                <span>模型连接</span><strong>{{ models.length }}</strong
-                ><small>服务端引用，浏览器不接触密钥</small>
-              </article>
-              <article>
-                <span>Agent</span><strong>{{ agents.length }}</strong
-                ><small>草稿和发布版本由 API 管理</small>
-              </article>
-              <article>
-                <span>第三方通道</span><strong>0</strong><small>Feishu 适配器规划中</small>
-              </article>
+        </template>
+
+        <template #inspector>
+          <RunInspector
+            v-if="route === 'user'"
+            :models="models"
+            :pending="inspector.pending"
+            :run-state="inspector.runState"
+            :active-run-id="inspector.activeRunId"
+            :resolved-model-id="inspector.resolvedModelId"
+            :selected-model-id="inspector.selectedModelId"
+            :events="inspector.events"
+            :error="inspector.error"
+          />
+          <div v-else class="mao-inspector admin-inspector">
+            <div class="mao-inspector-header">
+              <div>
+                <span class="mao-kicker">GOVERNANCE</span>
+                <h3>治理检查器</h3>
+              </div>
+              <span class="mao-live-pill live"><span class="mao-live-dot"></span>已开启</span>
             </div>
-            ><ModelConnectionsPanel
-              :workspace-id="selectedWorkspaceId"
-              :models="models"
-              :can-manage="
-                selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'
-              "
-              @changed="loadWorkspaceData(selectedWorkspaceId)"
-          /></template>
-          <template v-else
-            ><ChatPanel
-              :key="`${currentUser?.id}:${selectedWorkspaceId}`"
-              :workspace-id="selectedWorkspaceId"
-              :models="models"
-            />
-            <div class="stat-grid">
-              <article>
-                <span>可用模型</span
-                ><strong>{{
-                  models.filter((model) => model.status === 'active' && model.secretConfigured)
-                    .length
-                }}</strong
-                ><small>由管理员配置并启用</small>
-              </article>
-              <article>
-                <span>可用 Agent</span><strong>{{ agents.length }}</strong
-                ><small>从管理员发布的版本中选择</small>
-              </article>
-              <article>
-                <span>执行模式</span><strong>Chat</strong
-                ><small>TAO 任务执行将在后续阶段接入</small>
-              </article>
-            </div></template
-          >
-        </div>
-      </section>
+            <section class="mao-inspector-card">
+              <div class="mao-card-label">工作空间</div>
+              <strong>{{ selectedWorkspace?.name || '未选择' }}</strong
+              ><small>{{ selectedWorkspace?.role || '无角色' }} · 受控配置</small>
+            </section>
+            <section class="mao-inspector-card">
+              <div class="mao-card-label">密钥策略</div>
+              <div class="mao-policy-row">
+                <span>浏览器可见</span><strong class="is-disabled">否</strong>
+              </div>
+              <div class="mao-policy-row">
+                <span>服务端加密</span><strong class="is-enabled">是</strong>
+              </div>
+              <div class="mao-policy-row">
+                <span>审计事件</span><strong class="is-enabled">记录中</strong>
+              </div>
+            </section>
+            <p class="mao-inspector-note">
+              模型密钥只在服务端保存，测试调用和状态变更都会进入审计链路。
+            </p>
+          </div>
+        </template>
+      </WorkbenchShell>
     </main>
-    <footer>Agent Workbench · 用户工作台 · 管理员控制台 · 第三方通道</footer>
+    <footer v-if="authState !== 'ready'">
+      Agent Workbench · 用户工作台 · 管理员控制台 · 第三方通道
+    </footer>
   </div>
 </template>
