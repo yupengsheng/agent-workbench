@@ -12,6 +12,8 @@ test('read-only tools enforce workspace boundaries and return structured observa
   const workspace = join(root, workspaceId);
   await mkdir(join(workspace, 'src'), { recursive: true });
   await writeFile(join(workspace, 'src', 'hello.ts'), 'export const answer = 42;\n');
+  await writeFile(join(workspace, 'src', 'main.ts'), 'import { answer } from "./hello";\n');
+  await writeFile(join(workspace, 'package.json'), '{"scripts":{"test":"node test.js"}}\n');
   await writeFile(join(workspace, 'secret.txt'), 'do not leave workspace\n');
   await writeFile(join(root, 'secret.txt'), 'outside workspace\n');
   await symlink(join(root, 'secret.txt'), join(workspace, 'escape.txt'));
@@ -39,6 +41,18 @@ test('read-only tools enforce workspace boundaries and return structured observa
   });
   assert.equal(grep.status, 'success');
   assert.match(grep.content, /hello\.ts/);
+
+  const analysis = await registry.execute('analyze_workspace', '{}', { workspaceId });
+  assert.equal(analysis.status, 'success');
+  const report = JSON.parse(analysis.content);
+  assert.equal(report.kind, 'workspace_analysis');
+  assert.equal(report.summary.fileCount, 4);
+  assert.equal(report.summary.languages['.ts'], 2);
+  assert.deepEqual(
+    report.sources.map((source) => source.path),
+    ['package.json', 'src/main.ts'],
+  );
+  assert.match(report.citationInstruction, /sources\.path/);
 });
 
 test('TAO loop observes tool output and stops on a final model answer', async () => {

@@ -34,6 +34,8 @@ const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_OUTPUT_CHARS = 32_000;
 const MAX_MATCHES = 200;
 const MAX_VISITED = 8_000;
+const MAX_ANALYSIS_FILES = 500;
+const MAX_ANALYSIS_SOURCES = 80;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function stringify(value: unknown): string {
@@ -256,13 +258,47 @@ function patternArg(args: Record<string, unknown>): string | undefined {
   return pattern;
 }
 
+function fileExtension(path: string): string {
+  const name = path.split('/').at(-1) ?? path;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot).toLowerCase() : '(none)';
+}
+
+function sourceReason(path: string): string | undefined {
+  const name = path.split('/').at(-1)?.toLowerCase() ?? '';
+  if (name === 'package.json') return '项目依赖与脚本入口';
+  if (name === 'readme.md' || name === 'readme') return '项目说明与使用入口';
+  if (name === 'tsconfig.json' || name === 'pyproject.toml' || name === 'go.mod') {
+    return '语言与构建配置';
+  }
+  if (
+    name === 'main.ts' ||
+    name === 'main.js' ||
+    name === 'index.ts' ||
+    name === 'index.js' ||
+    name === 'app.ts' ||
+    name === 'app.js'
+  ) {
+    return '应用入口候选';
+  }
+  if (name === 'dockerfile' || name === 'compose.yaml' || name === 'docker-compose.yml') {
+    return '部署与运行入口';
+  }
+  return undefined;
+}
+
 export class ReadOnlyToolRegistry {
   private readonly resolver: WorkspacePathResolver;
   private readonly tools: ReadOnlyTool[];
 
   constructor(rootDirectory: string) {
     this.resolver = new WorkspacePathResolver(rootDirectory);
-    this.tools = [this.createReadFileTool(), this.createGlobTool(), this.createGrepTool()];
+    this.tools = [
+      this.createReadFileTool(),
+      this.createGlobTool(),
+      this.createGrepTool(),
+      this.createWorkspaceAnalysisTool(),
+    ];
   }
 
   definitions(): ToolDefinition[] {
@@ -482,6 +518,102 @@ export class ReadOnlyToolRegistry {
           );
         } catch (error) {
           return policyResult(error);
+        }
+      },
+    };
+  }
+
+  private createWorkspaceAnalysisTool(): ReadOnlyTool {
+    const resolver = this.resolver;
+    return {
+      definition: {
+        type: 'function',
+        function: {
+          name: 'analyze_workspace',
+          description:
+            '生成工作区代码目录分析摘要。返回文件统计、语言分布、入口候选和可引用的来源路径；只读，不读取文件正文。用户要求分析项目结构或生成目录报告时优先使用。',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: '可选的相对目录，默认工作区根目录' },
+              maxFiles: { type: 'integer', minimum: 1, maximum: 500 },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      async execute(argumentsJson, context) {
+        const cancelled = checkCancelled(context.signal);
+        if (cancelled) return cancelled;
+        const args = parseObject(argumentsJson);
+        if (!args) return errorResult('error', 'invalid_arguments', '工具参数必须是 JSON 对象');
+        const maxFiles = asInteger(args.maxFiles, MAX_ANALYSIS_FILES, 1, MAX_ANALYSIS_FILES);
+        if (maxFiles === undefined)
+          return errorResult('error', 'invalid_arguments', 'maxFiles 参数不合法');
+        try {
+          const root = await resolver.directory(context.workspaceId, args.path ?? '.');
+          const files: Array<{ path: string; extension: string; bytes: number }> = [];
+          const languageCounts = new Map<string, number>();
+          const sourceCandidates: Array<{ path: string; reason: string }> = [];
+          let directoryCount = 0;
+          let totalBytes = 0;
+          let stopped = false;
+          const walked = await walk(root, context.signal, async (path, isDirectory) => {
+            if (isDirectory) {
+              directoryCount += 1;
+              return true;
+            }
+            if (files.length >= maxFiles) return false;
+            try {
+              const info = await stat(path);
+              if (!info.isFile()) return true;
+              const displayPath = resolver.display(context.workspaceId, path);
+              const extension = fileExtension(displayPath);
+              files.push({ path: displayPath, extension, bytes: info.size });
+              totalBytes += info.size;
+              languageCounts.set(extension, (languageCounts.get(extension) ?? 0) + 1);
+              const reason = sourceReason(displayPath);
+              if (reason && sourceCandidates.length < MAX_ANALYSIS_SOURCES) {
+                sourceCandidates.push({ path: displayPath, reason });
+              }
+              return true;
+            } catch {
+              return true;
+            }
+          });
+          stopped = walked.stopped || files.length >= maxFiles;
+          if (context.signal?.aborted)
+            return errorResult('cancelled', 'cancelled', '工具执行已取消');
+          files.sort((left, right) => left.path.localeCompare(right.path));
+          sourceCandidates.sort((left, right) => left.path.localeCompare(right.path));
+          const languages = Object.fromEntries(
+            [...languageCounts.entries()].sort((left, right) => right[1] - left[1]),
+          );
+          return makeResult(
+            'success',
+            {
+              kind: 'workspace_analysis',
+              root: resolver.display(context.workspaceId, root),
+              summary: {
+                fileCount: files.length,
+                directoryCount,
+                totalBytes,
+                languages,
+                truncated: stopped,
+              },
+              files,
+              sources: sourceCandidates,
+              sourceCount: sourceCandidates.length,
+              sourcesTruncated: sourceCandidates.length >= MAX_ANALYSIS_SOURCES,
+              citationInstruction:
+                '引用来源时使用 sources.path；报告中的结构性结论必须能回指到这些路径。',
+            },
+            { truncated: stopped },
+          );
+        } catch (error) {
+          return context.signal?.aborted
+            ? errorResult('cancelled', 'cancelled', '工具执行已取消')
+            : policyResult(error);
         }
       },
     };
