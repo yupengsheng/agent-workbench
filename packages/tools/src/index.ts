@@ -1,5 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { createTwoFilesPatch } from 'diff';
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 
@@ -183,7 +184,7 @@ function checkCancelled(signal?: AbortSignal): ToolExecutionResult | undefined {
   return signal?.aborted ? errorResult('cancelled', 'cancelled', '工具执行已取消') : undefined;
 }
 
-async function readLimited(path: string) {
+async function readLimited(path: string, strictUtf8 = false) {
   const info = await stat(path);
   if (!info.isFile()) throw new PathPolicyError('not_file', '目标不是普通文件');
   const length = Math.min(info.size, MAX_FILE_BYTES + 1);
@@ -191,8 +192,18 @@ async function readLimited(path: string) {
   try {
     const buffer = Buffer.alloc(length);
     const read = await handle.read(buffer, 0, length, 0);
+    let text: string;
+    try {
+      text = strictUtf8
+        ? new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+            buffer.subarray(0, Math.min(read.bytesRead, MAX_FILE_BYTES)),
+          )
+        : buffer.subarray(0, Math.min(read.bytesRead, MAX_FILE_BYTES)).toString('utf8');
+    } catch {
+      throw new PathPolicyError('invalid_utf8', '目标文件不是有效的 UTF-8 文本');
+    }
     return {
-      text: buffer.subarray(0, Math.min(read.bytesRead, MAX_FILE_BYTES)).toString('utf8'),
+      text,
       bytes: info.size,
       truncated: info.size > MAX_FILE_BYTES || read.bytesRead > MAX_FILE_BYTES,
     };
@@ -291,19 +302,6 @@ function sourceReason(path: string): string | undefined {
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-function unifiedDiff(path: string, before: string, after: string): string {
-  const oldLines = before.split(/\r?\n/);
-  const newLines = after.split(/\r?\n/);
-  const lines = [
-    `--- a/${path}`,
-    `+++ b/${path}`,
-    `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
-  ];
-  for (const line of oldLines) lines.push(`-${line}`);
-  for (const line of newLines) lines.push(`+${line}`);
-  return lines.join('\n');
 }
 
 export class ReadOnlyToolRegistry {
@@ -647,7 +645,7 @@ export class ReadOnlyToolRegistry {
         function: {
           name: 'propose_file_change',
           description:
-            '提出一个文件修改预览，返回统一 diff、前后 SHA-256 和审批要求。只读，不会写入文件；必须先获得用户批准后才能应用。适用于需要修改代码或配置但当前运行没有写权限的任务。',
+            '提出一个文件修改预览，返回统一 diff、前后 SHA-256 和审批要求。只读，不会写入文件；当前仅供审阅，批准提案也不会写盘；不要宣称修改已应用。',
           parameters: {
             type: 'object',
             properties: {
@@ -666,6 +664,9 @@ export class ReadOnlyToolRegistry {
         const args = parseObject(argumentsJson);
         if (
           !args ||
+          Object.keys(args).some((key) => !['path', 'content', 'reason'].includes(key)) ||
+          typeof args.path !== 'string' ||
+          /[\x00-\x1f\x7f\\:]/.test(args.path) ||
           typeof args.content !== 'string' ||
           typeof args.reason !== 'string' ||
           args.reason.trim() === '' ||
@@ -674,32 +675,56 @@ export class ReadOnlyToolRegistry {
           return errorResult('error', 'invalid_arguments', 'path、content 和 reason 参数不合法');
         }
         const content = args.content;
+        if (Buffer.from(content, 'utf8').toString('utf8') !== content)
+          return errorResult('error', 'invalid_utf8', '修改内容必须是有效的 UTF-8 文本');
         if (Buffer.byteLength(content, 'utf8') > MAX_PROPOSED_FILE_BYTES)
           return errorResult('error', 'content_too_large', '待修改文件不能超过 256 KiB');
         if (/\u0000/.test(content))
           return errorResult('denied', 'binary_file', '不支持对二进制内容提出修改');
         try {
           const path = await resolver.existingPath(context.workspaceId, args.path);
-          const raw = await readLimited(path);
-          if (raw.truncated || /\u0000/.test(raw.text.slice(0, 8192)))
+          const raw = await readLimited(path, true);
+          if (raw.truncated || raw.bytes > MAX_PROPOSED_FILE_BYTES || /\u0000/.test(raw.text))
             return errorResult('denied', 'binary_file', '不支持对二进制或超大文件提出修改');
           const displayPath = resolver.display(context.workspaceId, path);
+          if (/[\x00-\x1f\x7f\\:]/.test(displayPath))
+            return errorResult('denied', 'invalid_path', '文件路径不能用于差异预览');
+          if (context.signal?.aborted)
+            return errorResult('cancelled', 'cancelled', '工具执行已取消');
           const beforeHash = sha256(raw.text);
           const afterHash = sha256(content);
           const changed = beforeHash !== afterHash;
-          return makeResult('success', {
+          const preview = {
             kind: 'file_change_proposal',
+            version: 1,
             path: displayPath,
             operation: 'update',
             changed,
             reason: args.reason.trim(),
             before: { sha256: beforeHash, bytes: Buffer.byteLength(raw.text, 'utf8') },
             after: { sha256: afterHash, bytes: Buffer.byteLength(content, 'utf8') },
-            patch: changed ? unifiedDiff(displayPath, raw.text, content) : '',
+            patch: changed
+              ? createTwoFilesPatch(
+                  `a/${displayPath}`,
+                  `b/${displayPath}`,
+                  raw.text,
+                  content,
+                  '',
+                  '',
+                  { context: 3 },
+                )
+              : '',
             approvalRequired: true,
             approvalScope: 'single_file_exact_content',
             citation: { path: displayPath, beforeSha256: beforeHash, afterSha256: afterHash },
-          });
+          };
+          if (JSON.stringify(preview).length > MAX_OUTPUT_CHARS)
+            return errorResult(
+              'error',
+              'preview_too_large',
+              '完整变更预览超过 32,000 字符，请缩小修改范围',
+            );
+          return makeResult('success', preview);
         } catch (error) {
           return context.signal?.aborted
             ? errorResult('cancelled', 'cancelled', '工具执行已取消')

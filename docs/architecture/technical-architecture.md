@@ -1,6 +1,6 @@
 # 技术架构总设计
 
-状态：v0.3 目标架构。当前已实现用户/管理员 Web、身份配置、模型适配、持久化 Run 和独立单模型 Runner；本轮实际依赖图与协议见 [ADR-0006](../decisions/0006-background-chat-runner.md)。TAO、SSE、审批、沙箱等按阶段实现。
+状态：v0.3 目标架构。当前已实现用户/管理员 Web、身份配置、模型适配、持久化 Run、TAO 只读工具、SSE、文件变更提案和持久化审阅，以及独立单模型 Runner；本轮实际依赖图与协议见 [ADR-0006](../decisions/0006-background-chat-runner.md) 和 [ADR-0011](../decisions/0011-file-change-review.md)。实际写入、Shell、非特权沙箱和多 Agent 按阶段实现。
 
 ## 设计目标
 

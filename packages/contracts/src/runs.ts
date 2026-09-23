@@ -1,3 +1,5 @@
+import type { FileChangeSummary } from './file-changes.js';
+
 export type SessionStatus = 'active' | 'archived';
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type RunStepKind = 'model' | 'tool';
@@ -61,15 +63,12 @@ export interface SessionListResponse {
 
 export interface SessionDetailResponse {
   session: SessionSummary;
-  runs: Array<{
-    run: RunSummary;
-    steps: RunStepSummary[];
-    events: RunEventSummary[];
-  }>;
+  runs: RunDetailResponse[];
 }
 
 export interface RunDetailResponse {
   run: RunSummary;
   steps: RunStepSummary[];
   events: RunEventSummary[];
+  fileChanges: FileChangeSummary[];
 }

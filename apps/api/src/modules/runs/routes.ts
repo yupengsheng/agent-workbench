@@ -1,3 +1,4 @@
+import { listFileChanges } from '@agent-workbench/persistence/file-changes';
 import { requestRunCancellation } from '@agent-workbench/persistence/runs';
 import type {
   RunDetailResponse,
@@ -138,7 +139,8 @@ async function runDetail(
   database: DatabaseHandle,
   row: typeof runs.$inferSelect,
 ): Promise<RunDetailResponse> {
-  const [steps, events] = await Promise.all([
+  const [fileChanges, steps, events] = await Promise.all([
+    listFileChanges(database, row.id),
     database.db
       .select()
       .from(runSteps)
@@ -150,7 +152,7 @@ async function runDetail(
       .where(eq(runEvents.runId, row.id))
       .orderBy(asc(runEvents.sequence)),
   ]);
-  return { run: toRun(row), steps: steps.map(toStep), events: events.map(toEvent) };
+  return { run: toRun(row), steps: steps.map(toStep), events: events.map(toEvent), fileChanges };
 }
 
 export async function registerRunRoutes(
@@ -372,27 +374,7 @@ export async function registerRunRoutes(
         .from(runs)
         .where(eq(runs.sessionId, session.id))
         .orderBy(asc(runs.createdAt));
-      const runDetails = await Promise.all(
-        runRows.map(async (run) => {
-          const [stepRows, eventRows] = await Promise.all([
-            context.database.db
-              .select()
-              .from(runSteps)
-              .where(eq(runSteps.runId, run.id))
-              .orderBy(asc(runSteps.sequence)),
-            context.database.db
-              .select()
-              .from(runEvents)
-              .where(eq(runEvents.runId, run.id))
-              .orderBy(asc(runEvents.sequence)),
-          ]);
-          return {
-            run: toRun(run),
-            steps: stepRows.map(toStep),
-            events: eventRows.map(toEvent),
-          };
-        }),
-      );
+      const runDetails = await Promise.all(runRows.map((run) => runDetail(context.database, run)));
 
       const response: SessionDetailResponse = { session: toSession(session), runs: runDetails };
       return reply.send(response);

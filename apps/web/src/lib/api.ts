@@ -1,6 +1,7 @@
 import type {
   AgentListResponse,
   AuthResponse,
+  FileChangeSummary,
   ChatRequest,
   ChatAcceptedResponse,
   RunDetailResponse,
@@ -147,6 +148,22 @@ export function getSession(workspaceId: string, sessionId: string): Promise<Sess
 export function getSessions(workspaceId: string): Promise<SessionListResponse> {
   return readJson<SessionListResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sessions`,
+  );
+}
+
+export function decideFileChange(
+  workspaceId: string,
+  proposal: FileChangeSummary,
+  decision: 'approve' | 'reject',
+): Promise<FileChangeSummary> {
+  return readJson(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(proposal.runId)}/file-changes/${encodeURIComponent(proposal.id)}/decision`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decision, digest: proposal.digest }),
+      signal: AbortSignal.timeout(10000),
+    },
   );
 }
 

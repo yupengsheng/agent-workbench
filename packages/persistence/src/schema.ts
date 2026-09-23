@@ -1,4 +1,5 @@
 import { relations } from 'drizzle-orm';
+import type { FileChangePreview } from '@agent-workbench/contracts';
 import {
   integer,
   index,
@@ -305,6 +306,35 @@ export const auditRecords = pgTable('audit_records', {
   ...auditTimestamps,
 });
 
+export const fileChangeReviewStatus = pgEnum('file_change_review_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'expired',
+]);
+export const fileChangeReviews = pgTable(
+  'file_change_reviews',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    stepId: uuid('step_id')
+      .notNull()
+      .unique()
+      .references(() => runSteps.id, { onDelete: 'cascade' }),
+    preview: jsonb('preview').$type<FileChangePreview>().notNull(),
+    digest: text('digest').notNull(),
+    policyVersion: text('policy_version').notNull().default('file-review-v1'),
+    status: fileChangeReviewStatus('status').notNull().default('pending'),
+    ...auditTimestamps,
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedBy: uuid('decided_by').references(() => users.id),
+  },
+  (table) => [index('file_change_reviews_run_idx').on(table.runId)],
+);
+
 export const workspaceRelations = relations(workspaces, ({ many }) => ({
   memberships: many(memberships),
   modelConnections: many(modelConnections),
@@ -321,6 +351,7 @@ export const userRelations = relations(users, ({ many }) => ({
   auditRecords: many(auditRecords),
   chatSessions: many(chatSessions),
   runs: many(runs),
+  fileChangeDecisions: many(fileChangeReviews),
 }));
 
 export const sessionRelations = relations(sessions, ({ one }) => ({
@@ -373,6 +404,7 @@ export const runRelations = relations(runs, ({ one, many }) => ({
   steps: many(runSteps),
   events: many(runEvents),
   artifacts: many(artifacts),
+  fileChanges: many(fileChangeReviews),
 }));
 
 export const runStepRelations = relations(runSteps, ({ one, many }) => ({
@@ -381,6 +413,7 @@ export const runStepRelations = relations(runSteps, ({ one, many }) => ({
     references: [runs.id],
   }),
   events: many(runEvents),
+  fileChangeReview: one(fileChangeReviews),
 }));
 
 export const runEventRelations = relations(runEvents, ({ one }) => ({
@@ -405,7 +438,23 @@ export const artifactRelations = relations(artifacts, ({ one }) => ({
   }),
 }));
 
+export const fileChangeReviewRelations = relations(fileChangeReviews, ({ one }) => ({
+  run: one(runs, {
+    fields: [fileChangeReviews.runId],
+    references: [runs.id],
+  }),
+  step: one(runSteps, {
+    fields: [fileChangeReviews.stepId],
+    references: [runSteps.id],
+  }),
+  decidedBy: one(users, {
+    fields: [fileChangeReviews.decidedBy],
+    references: [users.id],
+  }),
+}));
+
 export const schema = {
+  fileChangeReviews,
   users,
   workspaces,
   memberships,

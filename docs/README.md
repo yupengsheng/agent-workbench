@@ -27,5 +27,6 @@
 | [Loop engineering 参考](research/loop-engineering-reference.md) | Loop、Harness、自动化、验证、状态与停止条件映射   |
 
 [ADR-0006：后台对话 Runner](decisions/0006-background-chat-runner.md)记录本轮实际架构、202 提交协议、租约与取消语义。
+[ADR-0011：文件变更审批](decisions/0011-file-change-review.md)记录提案、持久化审批和“批准不写盘”的边界。
 
 业务模块的使用说明放模块 README；架构理由放 ADR；一次性调查记录放 research。避免在不同位置复制同一套部署步骤。

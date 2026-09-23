@@ -76,6 +76,15 @@ test('read-only tools enforce workspace boundaries and return structured observa
     await readFile(join(workspace, 'src', 'hello.ts'), 'utf8'),
     'export const answer = 42;\n',
   );
+
+  await writeFile(join(workspace, 'binary.dat'), Buffer.from([0xc3, 0x28]));
+  const invalidUtf8 = await registry.execute(
+    'propose_file_change',
+    JSON.stringify({ path: 'binary.dat', content: 'text', reason: '不应修改二进制文件' }),
+    { workspaceId },
+  );
+  assert.equal(invalidUtf8.status, 'denied');
+  assert.equal(invalidUtf8.errorCode, 'invalid_utf8');
 });
 
 test('TAO loop observes tool output and stops on a final model answer', async () => {

@@ -9,6 +9,7 @@ import { registerModelRoutes } from './modules/models/routes.js';
 import { registerWorkspaceRoutes } from './modules/workspaces/routes.js';
 import { registerChatRoutes } from './modules/chat/routes.js';
 import { registerRunRoutes } from './modules/runs/routes.js';
+import { registerApprovalRoutes } from './modules/approvals/routes.js';
 
 export interface AppDependencies {
   database: DatabaseHandle | undefined;
@@ -29,6 +30,7 @@ export function createApp(
     await registerWorkspaceRoutes(instance, dependencies.database);
     await registerChatRoutes(instance, dependencies.database);
     await registerRunRoutes(instance, dependencies.database);
+    await registerApprovalRoutes(instance, dependencies.database);
   });
   return app;
 }

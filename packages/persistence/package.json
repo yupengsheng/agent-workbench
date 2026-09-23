@@ -34,6 +34,10 @@
     "./runs": {
       "types": "./dist/runs.d.ts",
       "import": "./dist/runs.js"
+    },
+    "./file-changes": {
+      "types": "./dist/file-changes.d.ts",
+      "import": "./dist/file-changes.js"
     }
   }
 }

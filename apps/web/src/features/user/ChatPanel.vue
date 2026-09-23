@@ -2,11 +2,13 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type {
   ChatMessageInput,
+  FileChangeSummary,
   ModelConnectionSummary,
   RunEventSummary,
   RunDetailResponse,
 } from '@agent-workbench/contracts';
 import { chatWithModel, getSession, getRun, cancelRun, openRunEventStream } from '../../lib/api';
+import FileChangeCard from '../approvals/FileChangeCard.vue';
 
 const props = defineProps<{
   workspaceId: string;
@@ -50,6 +52,30 @@ let eventStreamFailed = false;
 const restoring = ref(false);
 const error = ref('');
 const transcript = ref<HTMLElement>();
+const reviewRuns = ref<Record<string, RunDetailResponse>>({});
+const fileChanges = computed(() =>
+  Object.values(reviewRuns.value).flatMap((detail) => detail.fileChanges ?? []),
+);
+
+function updateFileChange(change: FileChangeSummary) {
+  const detail = reviewRuns.value[change.runId];
+  if (detail)
+    detail.fileChanges = detail.fileChanges.map((item) => (item.id === change.id ? change : item));
+}
+
+async function refreshReview(runId: string) {
+  try {
+    const detail = await getRun(props.workspaceId, runId);
+    if (disposed) return;
+    reviewRuns.value[runId] = detail;
+    if (activeRunId.value === runId) {
+      runEvents.value = detail.events;
+      emitInspector();
+    }
+  } catch {
+    if (!disposed) error.value = '刷新审批状态失败，请重试或刷新页面';
+  }
+}
 
 function emitInspector() {
   emit('inspector-update', {
@@ -195,6 +221,7 @@ async function restoreSession() {
     const latestRun = detail.runs.at(-1);
     if (disposed) return;
     sessionId.value = detail.session.id;
+    reviewRuns.value = Object.fromEntries(detail.runs.map((run) => [run.run.id, run]));
     if (latestRun) {
       applyRun(latestRun);
       if (pending.value) schedulePoll();
@@ -213,6 +240,7 @@ async function restoreSession() {
 
 function applyRun(detail: RunDetailResponse) {
   if (disposed) return;
+  reviewRuns.value[detail.run.id] = detail;
   if (activeRunId.value && activeRunId.value !== detail.run.id) {
     closeEventStream();
     eventStreamFailed = false;
@@ -297,6 +325,7 @@ function clearConversation() {
   activeRunId.value = '';
   resolvedModelId.value = '';
   runEvents.value = [];
+  reviewRuns.value = {};
   closeEventStream();
   eventStreamFailed = false;
   runState.value = '';
@@ -433,6 +462,21 @@ onUnmounted(() => {
         </ol>
       </section>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <section v-if="fileChanges.length" aria-label="变更审阅">
+        <h3>变更审阅</h3>
+        <FileChangeCard
+          v-for="change in fileChanges"
+          :key="change.id"
+          :workspace-id="workspaceId"
+          :change="change"
+          :can-approve="
+            reviewRuns[change.runId]?.run.status === 'succeeded' &&
+            !reviewRuns[change.runId]?.run.cancelRequestedAt
+          "
+          @changed="updateFileChange"
+          @refresh="refreshReview(change.runId)"
+        />
+      </section>
       <form class="chat-composer" @submit.prevent="sendMessage">
         <textarea
           v-model="draft"

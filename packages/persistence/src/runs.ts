@@ -1,7 +1,15 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { parseFileChangePreview } from '@agent-workbench/contracts';
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { AppDatabase, DatabaseHandle } from './client.js';
-import { chatSessions, runEvents, runs, runSteps } from './schema.js';
+import {
+  auditRecords,
+  chatSessions,
+  fileChangeReviews,
+  runEvents,
+  runs,
+  runSteps,
+} from './schema.js';
 
 type Transaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 type RunRow = typeof runs.$inferSelect;
@@ -10,7 +18,7 @@ export type ClaimedRun = RunRow & { leaseToken: string; deadlineAt: Date };
 export const LEASE_SECONDS = 30;
 export const RUN_TIMEOUT_MS = 60_000;
 
-async function appendEvents(tx: Transaction, runId: string, events: EventInput[]) {
+export async function appendEvents(tx: Transaction, runId: string, events: EventInput[]) {
   // Every caller holds the Run row lock, including cancellation and recovery.
   const [last] = await tx
     .select({ sequence: sql<number>`coalesce(max(${runEvents.sequence}), 0)::int` })
@@ -130,6 +138,40 @@ export async function finishToolStep(
       )
       .returning({ id: runSteps.id });
     if (!step) return false;
+    if (
+      outcome.status === 'succeeded' &&
+      outcome.output.toolName === 'propose_file_change' &&
+      outcome.output.status === 'success' &&
+      typeof outcome.output.content === 'string'
+    ) {
+      const preview = parseFileChangePreview(JSON.parse(outcome.output.content));
+      if (!preview) throw new Error('invalid file change preview');
+      if (preview.changed) {
+        const digest = createHash('sha256').update(JSON.stringify(preview)).digest('hex');
+        const [proposal] = await tx
+          .insert(fileChangeReviews)
+          .values({
+            runId,
+            stepId,
+            preview,
+            digest,
+            expiresAt: sql`now() + interval '24 hours'`,
+          })
+          .returning({ id: fileChangeReviews.id });
+        if (!proposal) throw new Error('proposal insert returned no row');
+        await tx.insert(auditRecords).values({
+          workspaceId: run.workspaceId,
+          actorUserId: run.triggerUserId,
+          action: 'file_change.proposed',
+          resourceType: 'file_change',
+          resourceId: proposal.id,
+          metadata: { runId, stepId, digest, policyVersion: 'file-review-v1' },
+        });
+        await appendEvents(tx, runId, [
+          { type: 'file_change.proposed', stepId, payload: { proposalId: proposal.id, digest } },
+        ]);
+      }
+    }
     await appendEvents(tx, runId, [
       {
         type: `step.${outcome.status}`,
