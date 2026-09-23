@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createReadOnlyToolRegistry } from '../../packages/tools/dist/index.js';
@@ -53,6 +53,29 @@ test('read-only tools enforce workspace boundaries and return structured observa
     ['package.json', 'src/main.ts'],
   );
   assert.match(report.citationInstruction, /sources\.path/);
+
+  const proposalContent = 'export const answer = 43;\n';
+  const proposal = await registry.execute(
+    'propose_file_change',
+    JSON.stringify({
+      path: 'src/hello.ts',
+      content: proposalContent,
+      reason: '修复示例答案',
+    }),
+    { workspaceId },
+  );
+  assert.equal(proposal.status, 'success');
+  const change = JSON.parse(proposal.content);
+  assert.equal(change.kind, 'file_change_proposal');
+  assert.equal(change.approvalRequired, true);
+  assert.equal(change.path, 'src/hello.ts');
+  assert.match(change.patch, /-export const answer = 42;/);
+  assert.match(change.patch, /\+export const answer = 43;/);
+  assert.notEqual(change.before.sha256, change.after.sha256);
+  assert.equal(
+    await readFile(join(workspace, 'src', 'hello.ts'), 'utf8'),
+    'export const answer = 42;\n',
+  );
 });
 
 test('TAO loop observes tool output and stops on a final model answer', async () => {

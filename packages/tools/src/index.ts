@@ -1,4 +1,5 @@
 import { constants as fsConstants } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 
@@ -36,6 +37,7 @@ const MAX_MATCHES = 200;
 const MAX_VISITED = 8_000;
 const MAX_ANALYSIS_FILES = 500;
 const MAX_ANALYSIS_SOURCES = 80;
+const MAX_PROPOSED_FILE_BYTES = 256 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function stringify(value: unknown): string {
@@ -287,6 +289,23 @@ function sourceReason(path: string): string | undefined {
   return undefined;
 }
 
+function sha256(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function unifiedDiff(path: string, before: string, after: string): string {
+  const oldLines = before.split(/\r?\n/);
+  const newLines = after.split(/\r?\n/);
+  const lines = [
+    `--- a/${path}`,
+    `+++ b/${path}`,
+    `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
+  ];
+  for (const line of oldLines) lines.push(`-${line}`);
+  for (const line of newLines) lines.push(`+${line}`);
+  return lines.join('\n');
+}
+
 export class ReadOnlyToolRegistry {
   private readonly resolver: WorkspacePathResolver;
   private readonly tools: ReadOnlyTool[];
@@ -298,6 +317,7 @@ export class ReadOnlyToolRegistry {
       this.createGlobTool(),
       this.createGrepTool(),
       this.createWorkspaceAnalysisTool(),
+      this.createFileChangeProposalTool(),
     ];
   }
 
@@ -610,6 +630,76 @@ export class ReadOnlyToolRegistry {
             },
             { truncated: stopped },
           );
+        } catch (error) {
+          return context.signal?.aborted
+            ? errorResult('cancelled', 'cancelled', '工具执行已取消')
+            : policyResult(error);
+        }
+      },
+    };
+  }
+
+  private createFileChangeProposalTool(): ReadOnlyTool {
+    const resolver = this.resolver;
+    return {
+      definition: {
+        type: 'function',
+        function: {
+          name: 'propose_file_change',
+          description:
+            '提出一个文件修改预览，返回统一 diff、前后 SHA-256 和审批要求。只读，不会写入文件；必须先获得用户批准后才能应用。适用于需要修改代码或配置但当前运行没有写权限的任务。',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: '相对于工作区根目录的现有文本文件路径' },
+              content: { type: 'string', description: '修改后的完整 UTF-8 文本内容' },
+              reason: { type: 'string', description: '本次修改的目的，最多 500 个字符' },
+            },
+            required: ['path', 'content', 'reason'],
+            additionalProperties: false,
+          },
+        },
+      },
+      async execute(argumentsJson, context) {
+        const cancelled = checkCancelled(context.signal);
+        if (cancelled) return cancelled;
+        const args = parseObject(argumentsJson);
+        if (
+          !args ||
+          typeof args.content !== 'string' ||
+          typeof args.reason !== 'string' ||
+          args.reason.trim() === '' ||
+          args.reason.length > 500
+        ) {
+          return errorResult('error', 'invalid_arguments', 'path、content 和 reason 参数不合法');
+        }
+        const content = args.content;
+        if (Buffer.byteLength(content, 'utf8') > MAX_PROPOSED_FILE_BYTES)
+          return errorResult('error', 'content_too_large', '待修改文件不能超过 256 KiB');
+        if (/\u0000/.test(content))
+          return errorResult('denied', 'binary_file', '不支持对二进制内容提出修改');
+        try {
+          const path = await resolver.existingPath(context.workspaceId, args.path);
+          const raw = await readLimited(path);
+          if (raw.truncated || /\u0000/.test(raw.text.slice(0, 8192)))
+            return errorResult('denied', 'binary_file', '不支持对二进制或超大文件提出修改');
+          const displayPath = resolver.display(context.workspaceId, path);
+          const beforeHash = sha256(raw.text);
+          const afterHash = sha256(content);
+          const changed = beforeHash !== afterHash;
+          return makeResult('success', {
+            kind: 'file_change_proposal',
+            path: displayPath,
+            operation: 'update',
+            changed,
+            reason: args.reason.trim(),
+            before: { sha256: beforeHash, bytes: Buffer.byteLength(raw.text, 'utf8') },
+            after: { sha256: afterHash, bytes: Buffer.byteLength(content, 'utf8') },
+            patch: changed ? unifiedDiff(displayPath, raw.text, content) : '',
+            approvalRequired: true,
+            approvalScope: 'single_file_exact_content',
+            citation: { path: displayPath, beforeSha256: beforeHash, afterSha256: afterHash },
+          });
         } catch (error) {
           return context.signal?.aborted
             ? errorResult('cancelled', 'cancelled', '工具执行已取消')
