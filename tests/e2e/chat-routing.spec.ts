@@ -26,6 +26,8 @@ test('Jev automatic routing submits an allow-list-free routing request', async (
       };
     } else if (path.endsWith('/agents')) {
       body = { agents: [] };
+    } else if (path.endsWith('/sessions')) {
+      body = { sessions: [] };
     } else if (path.endsWith('/chat')) {
       chatRequest = request.postDataJSON() as Record<string, unknown>;
       body = { sessionId: 'session-1', runId: 'run-1', stepId: 'step-1', status: 'queued' };

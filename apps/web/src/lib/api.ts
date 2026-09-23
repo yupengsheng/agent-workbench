@@ -10,6 +10,7 @@ import type {
   ModelConnectionSummary,
   ModelConnectionTestResponse,
   SessionDetailResponse,
+  SessionListResponse,
   WorkspaceListResponse,
 } from '@agent-workbench/contracts';
 
@@ -140,6 +141,12 @@ export function chatWithModel(
 export function getSession(workspaceId: string, sessionId: string): Promise<SessionDetailResponse> {
   return readJson<SessionDetailResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+export function getSessions(workspaceId: string): Promise<SessionListResponse> {
+  return readJson<SessionListResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sessions`,
   );
 }
 

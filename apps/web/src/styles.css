@@ -1127,6 +1127,33 @@ body {
   box-shadow: 0 0 0 3px var(--mao-primary-soft);
 }
 
+.mao-session-dot.new {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--mao-primary);
+  background: var(--mao-primary-soft);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.new-session-item {
+  margin-bottom: 5px;
+  border: 1px dashed rgba(0, 102, 204, 0.25);
+}
+
+.new-session-item:hover {
+  border-color: var(--mao-primary);
+}
+
+.mao-session-empty {
+  padding: 18px 8px;
+  color: var(--mao-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
 .mao-session-content {
   display: grid;
   gap: 2px;

@@ -46,7 +46,18 @@ test('refresh restores history, clearing starts a new session, workspaces remain
         ],
       };
     else if (path.endsWith('/agents')) body = { agents: [] };
-    else if (path.endsWith('/chat')) {
+    else if (path.endsWith('/sessions')) {
+      body = {
+        sessions: [...sessions.entries()].map(([id, value], index) => ({
+          id,
+          workspaceId: path.split('/')[4],
+          title: `对话 ${index + 1}`,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })),
+      };
+    } else if (path.endsWith('/chat')) {
       const input = request.postDataJSON();
       const workspace = path.split('/')[4]!;
       submissions.push({ workspace, sessionId: input.sessionId });

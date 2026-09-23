@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { AuthResponse, WorkspaceListResponse } from '@agent-workbench/contracts';
+import type {
+  AuthResponse,
+  SessionSummary,
+  WorkspaceListResponse,
+} from '@agent-workbench/contracts';
 
 type Route = 'user' | 'admin';
 
@@ -9,6 +13,8 @@ const props = defineProps<{
   workspaces: WorkspaceListResponse['workspaces'];
   selectedWorkspaceId: string;
   selectedWorkspace?: WorkspaceListResponse['workspaces'][number] | undefined;
+  sessions: SessionSummary[];
+  activeSessionId: string;
   healthState: 'checking' | 'connected' | 'unavailable';
   healthDetail: string;
 }>();
@@ -17,8 +23,15 @@ const emit = defineEmits<{
   navigate: [route: Route];
   logout: [];
   workspaceChange: [workspaceId: string];
+  selectSession: [sessionId: string];
   newSession: [];
 }>();
+
+function formatSessionDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '最近更新';
+  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(date);
+}
 </script>
 
 <template>
@@ -101,29 +114,46 @@ const emit = defineEmits<{
 
         <div class="mao-sidebar-section-label">
           <span>{{ props.route === 'admin' ? '配置' : '会话' }}</span>
-          <span class="mao-sidebar-count">{{ props.route === 'admin' ? '3' : '1' }}</span>
+          <span class="mao-sidebar-count">{{
+            props.route === 'admin' ? '3' : props.sessions.length
+          }}</span>
         </div>
 
-        <nav class="mao-session-list" aria-label="会话列表">
+        <nav v-if="props.route === 'user'" class="mao-session-list" aria-label="会话列表">
           <button
-            v-if="props.route === 'user'"
             type="button"
-            class="mao-session-item active"
+            class="mao-session-item new-session-item"
             @click="emit('newSession')"
           >
-            <span class="mao-session-dot running" aria-hidden="true"></span>
+            <span class="mao-session-dot new" aria-hidden="true">+</span>
             <span class="mao-session-content">
-              <strong>当前对话</strong>
-              <small>{{ props.selectedWorkspace?.name || '未选择工作空间' }}</small>
+              <strong>新建任务</strong>
+              <small>开始一段新的对话</small>
+            </span>
+          </button>
+          <button
+            v-for="session in props.sessions"
+            :key="session.id"
+            type="button"
+            class="mao-session-item"
+            :class="{ active: session.id === props.activeSessionId }"
+            @click="emit('selectSession', session.id)"
+          >
+            <span
+              class="mao-session-dot"
+              :class="{ running: session.id === props.activeSessionId }"
+              aria-hidden="true"
+            ></span>
+            <span class="mao-session-content">
+              <strong>{{ session.title || '新对话' }}</strong>
+              <small>{{ formatSessionDate(session.updatedAt) }}</small>
             </span>
             <span class="mao-session-arrow" aria-hidden="true">›</span>
           </button>
-          <button
-            v-else
-            type="button"
-            class="mao-session-item active"
-            @click="emit('navigate', 'admin')"
-          >
+          <div v-if="props.sessions.length === 0" class="mao-session-empty">暂无历史任务</div>
+        </nav>
+        <nav v-else class="mao-session-list" aria-label="管理员导航">
+          <button type="button" class="mao-session-item active" @click="emit('navigate', 'admin')">
             <span class="mao-session-dot" aria-hidden="true"></span>
             <span class="mao-session-content">
               <strong>模型与 Agent</strong>

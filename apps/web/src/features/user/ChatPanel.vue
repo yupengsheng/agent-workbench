@@ -14,6 +14,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  'session-created': [sessionId: string];
   'inspector-update': [
     state: {
       pending: boolean;
@@ -335,6 +336,7 @@ async function sendMessage() {
     });
     sessionId.value = response.sessionId;
     window.sessionStorage.setItem(sessionStorageKey.value, response.sessionId);
+    emit('session-created', response.sessionId);
     if (disposed) return;
     activeRunId.value = response.runId;
     eventStreamFailed = false;

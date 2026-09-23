@@ -5,6 +5,7 @@ import type {
   AuthResponse,
   ModelConnectionListResponse,
   RunEventSummary,
+  SessionSummary,
   WorkspaceListResponse,
 } from '@agent-workbench/contracts';
 import {
@@ -15,6 +16,7 @@ import {
   getWorkspaces,
   login,
   logout,
+  getSessions,
 } from './lib/api';
 import ModelConnectionsPanel from './features/admin/ModelConnectionsPanel.vue';
 import ChatPanel from './features/user/ChatPanel.vue';
@@ -34,6 +36,8 @@ const workspaces = ref<WorkspaceListResponse['workspaces']>([]);
 const selectedWorkspaceId = ref('');
 const models = ref<ModelConnectionListResponse['connections']>([]);
 const agents = ref<AgentListResponse['agents']>([]);
+const sessions = ref<SessionSummary[]>([]);
+const selectedSessionId = ref('');
 const dataError = ref('');
 const account = ref('');
 const password = ref('');
@@ -79,6 +83,18 @@ async function loadWorkspaceData(workspaceId: string) {
     agents.value = agentResponse.agents;
   } catch (error) {
     dataError.value = error instanceof Error ? error.message : '工作空间数据加载失败';
+  }
+  try {
+    const sessionResponse = await getSessions(workspaceId);
+    sessions.value = sessionResponse.sessions;
+    const stored = window.sessionStorage.getItem(`agent-workbench:session:${workspaceId}`);
+    selectedSessionId.value =
+      sessions.value.find((session) => session.id === stored)?.id ?? sessions.value[0]?.id ?? '';
+  } catch {
+    // Older API fixtures and installations may not expose the optional session index yet.
+    // ChatPanel still restores the current session from workspace-scoped sessionStorage.
+    sessions.value = [];
+    selectedSessionId.value = '';
   }
 }
 
@@ -137,6 +153,8 @@ async function submitLogout() {
     workspaces.value = [];
     models.value = [];
     agents.value = [];
+    sessions.value = [];
+    selectedSessionId.value = '';
     authState.value = 'error';
   } catch (error) {
     authError.value = error instanceof Error ? error.message : '退出失败';
@@ -151,6 +169,10 @@ function setRoute(nextRoute: Route) {
 }
 
 function startNewSession() {
+  if (selectedWorkspaceId.value) {
+    window.sessionStorage.removeItem(`agent-workbench:session:${selectedWorkspaceId.value}`);
+  }
+  selectedSessionId.value = '';
   chatResetKey.value += 1;
   inspector.value = {
     pending: false,
@@ -165,6 +187,27 @@ function startNewSession() {
 
 function updateInspector(state: typeof inspector.value) {
   inspector.value = state;
+}
+
+async function selectSession(sessionId: string) {
+  if (!sessionId || sessionId === selectedSessionId.value) return;
+  selectedSessionId.value = sessionId;
+  window.sessionStorage.setItem(`agent-workbench:session:${selectedWorkspaceId.value}`, sessionId);
+  chatResetKey.value += 1;
+}
+
+async function refreshSessions(sessionId?: string) {
+  if (!selectedWorkspaceId.value) return;
+  try {
+    const response = await getSessions(selectedWorkspaceId.value);
+    sessions.value = response.sessions;
+    const nextId = sessionId ?? selectedSessionId.value;
+    selectedSessionId.value = sessions.value.some((session) => session.id === nextId)
+      ? nextId
+      : (sessions.value[0]?.id ?? '');
+  } catch {
+    // Keep the active chat usable when the session index is temporarily unavailable.
+  }
 }
 
 async function selectWorkspace(workspaceId = selectedWorkspaceId.value) {
@@ -261,11 +304,14 @@ onMounted(async () => {
         :workspaces="workspaces"
         :selected-workspace-id="selectedWorkspaceId"
         :selected-workspace="selectedWorkspace"
+        :sessions="sessions"
+        :active-session-id="selectedSessionId"
         :health-state="healthState"
         :health-detail="healthDetail"
         @navigate="setRoute"
         @logout="submitLogout"
         @workspace-change="selectWorkspace"
+        @select-session="selectSession"
         @new-session="startNewSession"
       >
         <p v-if="dataError" class="form-error mao-page-error" role="alert">{{ dataError }}</p>
@@ -294,6 +340,7 @@ onMounted(async () => {
             :workspace-id="selectedWorkspaceId"
             :models="models"
             @inspector-update="updateInspector"
+            @session-created="refreshSessions"
           />
           <div class="mao-stat-strip compact">
             <article>
