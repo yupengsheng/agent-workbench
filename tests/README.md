@@ -22,7 +22,7 @@ TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db \
   node --test tests/integration/file-change-review.test.mjs
 ```
 
-该测试使用独立 `review_test_*` schema，覆盖提案和审批状态的持久化、摘要/角色/资源隔离、重复决定和过期处理。
+该测试使用独立 `review_test_*` schema，覆盖提案和审批状态的持久化、摘要/角色/资源隔离、重复决定、过期处理，以及 Runner 重新校验摘要后的原子应用。
 
 集成测试覆盖未登录、模型不存在、缺少密钥/加密主密钥、后台提交、成功与失败终态、事件顺序、用量、用户/工作空间隔离，以及 API 实例重建后的读取与续聊。使用本机模型模拟服务，不请求真实供应商；临时密钥和测试进程不会改变运行中 API 的配置。
 

@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import { createDatabase } from '../../apps/api/dist/db/client.js';
 import { createApp } from '../../apps/api/dist/app.js';
 import { createSession } from '../../apps/api/dist/modules/identity/service.js';
 import { finishToolStep, startToolStep } from '@agent-workbench/persistence/runs';
+import { applyApprovedFileChange } from '../../apps/runner/dist/worker.js';
 
 const connectionString = process.env.TEST_DATABASE_URL;
 
@@ -13,17 +15,21 @@ function digest(preview) {
   return createHash('sha256').update(JSON.stringify(preview)).digest('hex');
 }
 
-function preview(path, changed = true) {
+function preview(path, content = 'new\n') {
+  const before = 'old\n';
   return {
     kind: 'file_change_proposal',
     version: 1,
     path,
     operation: 'update',
-    changed,
+    changed: before !== content,
     reason: '为审批行为测试生成的最小变更',
-    before: { sha256: '1'.repeat(64), bytes: 3 },
-    after: { sha256: changed ? '2'.repeat(64) : '1'.repeat(64), bytes: changed ? 4 : 3 },
-    patch: changed ? '--- a/README.md\n+++ b/README.md\n@@\n-old\n+new\n' : '',
+    before: { sha256: createHash('sha256').update(before).digest('hex'), bytes: before.length },
+    after: {
+      sha256: createHash('sha256').update(content).digest('hex'),
+      bytes: content.length,
+    },
+    patch: before !== content ? '--- a/README.md\n+++ b/README.md\n@@\n-old\n+new\n' : '',
     approvalRequired: true,
     approvalScope: 'single_file_exact_content',
   };
@@ -46,6 +52,7 @@ test(
     const admin = createDatabase(connectionString);
     let database;
     let app;
+    let workspaceRoot;
     try {
       await admin.pool.query(`CREATE SCHEMA "${schemaName}"`);
       const scopedUrl = new URL(connectionString);
@@ -57,6 +64,9 @@ test(
       const viewerId = randomUUID();
       const otherWorkspaceId = randomUUID();
       const workspaceId = randomUUID();
+      workspaceRoot = await mkdtemp('/tmp/agent-workbench-review-');
+      await mkdir(join(workspaceRoot, workspaceId), { recursive: true });
+      await writeFile(join(workspaceRoot, workspaceId, 'README.md'), 'old\n');
       for (const [id, email] of [
         [ownerId, 'owner@example.test'],
         [viewerId, 'viewer@example.test'],
@@ -94,7 +104,8 @@ test(
         arguments: '{}',
       });
       assert.ok(stepId);
-      const proposedPreview = preview('README.md');
+      const proposedContent = 'new\n';
+      const proposedPreview = preview('README.md', proposedContent);
       assert.equal(
         await finishToolStep(database, runId, leaseToken, stepId, {
           status: 'succeeded',
@@ -103,6 +114,7 @@ test(
             toolCallId: 'call-review-1',
             status: 'success',
             content: JSON.stringify(proposedPreview),
+            fileChange: { ...proposedPreview, content: proposedContent },
           },
         }),
         true,
@@ -127,19 +139,21 @@ test(
         "INSERT INTO run_steps (id,run_id,sequence,kind,status,completed_at) VALUES ($1,$2,1,'tool','succeeded',now())",
         [viewerStepId, viewerRunId],
       );
-      const viewerPreview = preview('VIEWER.md');
+      const viewerContent = 'viewer\n';
+      const viewerPreview = preview('VIEWER.md', viewerContent);
       const viewerDigest = digest(viewerPreview);
       const viewerChangeId = randomUUID();
       await database.pool.query(
-        "INSERT INTO file_change_reviews (id,run_id,step_id,preview,digest,expires_at) VALUES ($1,$2,$3,$4,$5,now()+interval '1 day')",
-        [viewerChangeId, viewerRunId, viewerStepId, viewerPreview, viewerDigest],
+        "INSERT INTO file_change_reviews (id,run_id,step_id,preview,proposed_content,digest,expires_at) VALUES ($1,$2,$3,$4,$5,$6,now()+interval '1 day')",
+        [viewerChangeId, viewerRunId, viewerStepId, viewerPreview, viewerContent, viewerDigest],
       );
 
       const expiredSessionId = randomUUID();
       const expiredRunId = randomUUID();
       const expiredStepId = randomUUID();
       const expiredChangeId = randomUUID();
-      const expiredPreview = preview('EXPIRED.md');
+      const expiredContent = 'expired\n';
+      const expiredPreview = preview('EXPIRED.md', expiredContent);
       const expiredDigest = digest(expiredPreview);
       await database.pool.query(
         'INSERT INTO chat_sessions (id,workspace_id,owner_user_id) VALUES ($1,$2,$3)',
@@ -154,8 +168,15 @@ test(
         [expiredStepId, expiredRunId],
       );
       await database.pool.query(
-        "INSERT INTO file_change_reviews (id,run_id,step_id,preview,digest,expires_at) VALUES ($1,$2,$3,$4,$5,now()-interval '1 minute')",
-        [expiredChangeId, expiredRunId, expiredStepId, expiredPreview, expiredDigest],
+        "INSERT INTO file_change_reviews (id,run_id,step_id,preview,proposed_content,digest,expires_at) VALUES ($1,$2,$3,$4,$5,$6,now()-interval '1 minute')",
+        [
+          expiredChangeId,
+          expiredRunId,
+          expiredStepId,
+          expiredPreview,
+          expiredContent,
+          expiredDigest,
+        ],
       );
 
       app = createApp({ logger: false }, { database });
@@ -173,6 +194,7 @@ test(
       assert.equal(detail.json().fileChanges.length, 1);
       assert.deepEqual(detail.json().fileChanges[0].preview, proposedPreview);
       assert.equal(detail.json().fileChanges[0].status, 'pending');
+      assert.equal(detail.json().fileChanges[0].applicationStatus, 'not_started');
       const changeId = detail.json().fileChanges[0].id;
       const correctDigest = detail.json().fileChanges[0].digest;
 
@@ -200,6 +222,11 @@ test(
       });
       assert.equal(repeated.statusCode, 200);
       assert.equal(repeated.json().applied, false);
+      assert.equal(await applyApprovedFileChange(database, randomUUID(), workspaceRoot), true);
+      assert.equal(await readFile(join(workspaceRoot, workspaceId, 'README.md'), 'utf8'), 'new\n');
+      const appliedDetail = await request('GET', `/api/v1/workspaces/${workspaceId}/runs/${runId}`);
+      assert.equal(appliedDetail.json().fileChanges[0].applicationStatus, 'applied');
+      assert.equal(appliedDetail.json().fileChanges[0].applied, true);
       assert.equal(
         (
           await request('POST', `${base}/${changeId}/decision`, {
@@ -258,7 +285,13 @@ test(
       );
       assert.deepEqual(
         events.rows.map((row) => row.type),
-        ['step.started', 'file_change.proposed', 'step.succeeded', 'file_change.approved'],
+        [
+          'step.started',
+          'file_change.proposed',
+          'step.succeeded',
+          'file_change.approved',
+          'file_change.applied',
+        ],
       );
       const audits = await database.pool.query(
         'SELECT action FROM audit_records WHERE resource_id=$1 ORDER BY created_at',
@@ -266,11 +299,12 @@ test(
       );
       assert.deepEqual(
         audits.rows.map((row) => row.action),
-        ['file_change.proposed', 'file_change.approved'],
+        ['file_change.proposed', 'file_change.approved', 'file_change.applied'],
       );
     } finally {
       await app?.close();
       await database?.pool.end();
+      if (workspaceRoot) await rm(workspaceRoot, { recursive: true, force: true });
       await admin.pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
       await admin.pool.end();
     }

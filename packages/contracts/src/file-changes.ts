@@ -12,7 +12,13 @@ export interface FileChangePreview {
   approvalScope: 'single_file_exact_content';
 }
 
+export interface FileChangeProposal extends FileChangePreview {
+  content: string;
+}
+
 export type FileChangeStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+export type FileChangeApplicationStatus =
+  'not_started' | 'applying' | 'applied' | 'failed' | 'unknown';
 export interface FileChangeSummary {
   id: string;
   runId: string;
@@ -25,7 +31,10 @@ export interface FileChangeSummary {
   expiresAt: string;
   decidedAt: string | null;
   decidedBy: string | null;
-  applied: false;
+  applicationStatus: FileChangeApplicationStatus;
+  applyErrorCode: string | null;
+  applyErrorMessage: string | null;
+  applied: boolean;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -85,4 +94,14 @@ export function parseFileChangePreview(value: unknown): FileChangePreview | unde
     approvalRequired: true,
     approvalScope: 'single_file_exact_content',
   };
+}
+
+/** Validate the private exact-content payload used between the tool and Runner. */
+export function parseFileChangeProposal(value: unknown): FileChangeProposal | undefined {
+  if (!record(value) || typeof value.content !== 'string') return undefined;
+  const contentBytes = new TextEncoder().encode(value.content).byteLength;
+  if (contentBytes > 256 * 1024 || /\u0000/.test(value.content)) return undefined;
+  const preview = parseFileChangePreview(value);
+  if (!preview || contentBytes !== preview.after.bytes) return undefined;
+  return { ...preview, content: value.content };
 }

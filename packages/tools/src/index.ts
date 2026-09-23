@@ -11,6 +11,8 @@ export interface ToolExecutionResult {
   content: string;
   truncated?: boolean;
   errorCode?: string;
+  /** Private Runner payload; never sent as the model observation. */
+  fileChange?: Record<string, unknown>;
 }
 
 export interface ToolContext {
@@ -645,7 +647,7 @@ export class ReadOnlyToolRegistry {
         function: {
           name: 'propose_file_change',
           description:
-            '提出一个文件修改预览，返回统一 diff、前后 SHA-256 和审批要求。只读，不会写入文件；当前仅供审阅，批准提案也不会写盘；不要宣称修改已应用。',
+            '提出一个文件修改预览，返回统一 diff、前后 SHA-256 和审批要求。工具本身只读；批准后由 Runner 重新校验并单文件原子应用，不要在审批前宣称修改已应用。',
           parameters: {
             type: 'object',
             properties: {
@@ -724,7 +726,10 @@ export class ReadOnlyToolRegistry {
               'preview_too_large',
               '完整变更预览超过 32,000 字符，请缩小修改范围',
             );
-          return makeResult('success', preview);
+          return {
+            ...makeResult('success', preview),
+            fileChange: { ...preview, content },
+          };
         } catch (error) {
           return context.signal?.aborted
             ? errorResult('cancelled', 'cancelled', '工具执行已取消')
@@ -741,3 +746,5 @@ export function createReadOnlyToolRegistry(
 ) {
   return new ReadOnlyToolRegistry(rootDirectory);
 }
+
+export { applyFileChange, type FileChangeApplyResult } from './file-change-applier.js';

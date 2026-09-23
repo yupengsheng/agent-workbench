@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createDatabase } from '@agent-workbench/persistence/client';
-import { runOnce } from './worker.js';
+import { recoverStuckFileChangeApplications } from '@agent-workbench/persistence/file-changes';
+import { applyApprovedFileChange, runOnce } from './worker.js';
 
 const database = createDatabase();
 if (!database) {
@@ -24,6 +25,8 @@ if (!database) {
   try {
     while (!shutdown.signal.aborted) {
       try {
+        await recoverStuckFileChangeApplications(database);
+        if (await applyApprovedFileChange(database, owner, undefined, shutdown.signal)) continue;
         if (await runOnce(database, owner, shutdown.signal)) continue;
       } catch {
         console.error('Runner cycle failed; retrying database coordination');

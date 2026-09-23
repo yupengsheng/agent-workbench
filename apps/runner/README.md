@@ -21,4 +21,4 @@ npm run start --workspace @agent-workbench/runner
 
 测试部署脚本同时启动 API、Web、Runner，Runner PID 与日志位于部署根目录 `runtime/runner.pid`、`runtime/runner.log`。仍使用试点进程管理，系统重启后的自动拉起和生产服务监管留待私有化交付。
 
-工作区只读工具使用 `AGENT_WORKBENCH_WORKSPACE_ROOT/<workspaceId>` 映射目录；不存在的目录会返回结构化拒绝结果。单次运行最多 8 轮、16 次工具调用和 16,384 个累计 Token。`propose_file_change` 只读目标文件并持久化审阅提案，批准/拒绝都写入 Run 事件和审计；当前 `applied` 永远为 `false`，不会写盘。Shell、实际文件写入、非特权沙箱和长任务检查点尚未实现。设计和协议迁移说明见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md)、[ADR-0007](../../docs/decisions/0007-tao-readonly-tools.md) 和 [ADR-0011](../../docs/decisions/0011-file-change-review.md)。
+工作区只读工具使用 `AGENT_WORKBENCH_WORKSPACE_ROOT/<workspaceId>` 映射目录；不存在的目录会返回结构化拒绝结果。单次运行最多 8 轮、16 次工具调用和 16,384 个累计 Token。`propose_file_change` 会持久化精确内容和审阅提案；批准后由 Runner 领取，重新校验前置 SHA，再用同目录临时文件和原子替换应用。应用状态为 `not_started/applying/applied/failed/unknown`，写入结果不明时不会自动重试。Shell、非特权沙箱和长任务检查点尚未实现。设计和协议迁移说明见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md)、[ADR-0007](../../docs/decisions/0007-tao-readonly-tools.md) 和 [ADR-0011](../../docs/decisions/0011-file-change-review.md)。

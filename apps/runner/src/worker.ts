@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { join } from 'node:path';
 import { and, eq, inArray } from 'drizzle-orm';
 import { parseChatRequest } from '@agent-workbench/contracts';
 import {
@@ -10,7 +11,7 @@ import {
   TypeSafeJevModelRouter,
   type ToolCall,
 } from '@agent-workbench/runtime';
-import { createReadOnlyToolRegistry } from '@agent-workbench/tools';
+import { applyFileChange, createReadOnlyToolRegistry } from '@agent-workbench/tools';
 import type { DatabaseHandle } from '@agent-workbench/persistence/client';
 import {
   memberships,
@@ -29,6 +30,43 @@ import {
   startToolStep,
   type ClaimedRun,
 } from '@agent-workbench/persistence/runs';
+import {
+  claimApprovedFileChange,
+  finishFileChangeApplication,
+  type FileChangeApplicationOutcome,
+} from '@agent-workbench/persistence/file-changes';
+
+const defaultWorkspaceRoot =
+  process.env.AGENT_WORKBENCH_WORKSPACE_ROOT ?? join(process.cwd(), '.data', 'workspaces');
+
+/** Execute one approved, exact-content file proposal on the Runner side. */
+export async function applyApprovedFileChange(
+  database: DatabaseHandle,
+  owner: string,
+  workspaceRoot = defaultWorkspaceRoot,
+  signal?: AbortSignal,
+) {
+  if (signal?.aborted) return false;
+  const change = await claimApprovedFileChange(database, owner);
+  if (!change) return false;
+  const result = await applyFileChange(
+    workspaceRoot,
+    change.workspaceId,
+    change.preview,
+    change.proposedContent,
+    signal,
+  );
+  const outcome: FileChangeApplicationOutcome =
+    result.status === 'applied'
+      ? { status: 'applied' }
+      : { status: result.status, code: result.code, message: result.message };
+  await finishFileChangeApplication(database, {
+    id: change.id,
+    owner,
+    outcome,
+  });
+  return true;
+}
 
 export async function executeRun(
   database: DatabaseHandle,
@@ -349,6 +387,7 @@ export async function executeRun(
                       content: observation.content,
                       ...(observation.errorCode ? { errorCode: observation.errorCode } : {}),
                       ...(observation.truncated ? { truncated: true } : {}),
+                      ...(observation.fileChange ? { fileChange: observation.fileChange } : {}),
                     },
                   },
             );

@@ -2,7 +2,7 @@
 
 可私有化部署的多 Agent 工作台。目标是统一管理 Agent、模型、用户与审计，通过 Think-Act-Observe 引擎执行文件、命令、网页和子任务操作。
 
-**当前阶段：M3 受控动作增量建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。独立 Runner 已支持后台执行、租约、取消和异常终态；首版 TAO 循环、受限只读文件工具、SSE 和文件变更提案/持久化审阅已落地。实际文件写入、Shell、非特权沙箱和多 Agent 委派仍按路线建设。
+**当前阶段：M3 受控动作增量建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。独立 Runner 已支持后台执行、租约、取消和异常终态；首版 TAO 循环、受限只读文件工具、SSE、文件变更审阅和带前置 SHA 校验的单文件应用已落地。Shell、非特权沙箱和多 Agent 委派仍按路线建设。
 
 ## 快速开始
 

@@ -6,6 +6,6 @@
 
 工具定义和执行接口来自本包。后续写入、Shell、网页和 MCP 工具应在独立模块中加入确定性策略和审批，不应绕过此注册表。
 
-`propose_file_change` 会读取工作区内已有的 UTF-8 文本文件，返回完整 unified diff、修改前后 SHA-256、字节数和 `approvalRequired` 标记。它不会创建文件、写盘或执行命令；当前批准提案也只记录审阅决定，仍不会修改文件。256 KiB 文件上限和 32,000 字符预览上限用于避免把大内容直接送入模型上下文。
+`propose_file_change` 会读取工作区内已有的 UTF-8 文本文件，返回完整 unified diff、修改前后 SHA-256、字节数和 `approvalRequired` 标记。它不会创建文件、写盘或执行命令；批准后的实际应用由 Runner 单独领取并重新校验。256 KiB 文件上限和 32,000 字符预览上限用于避免把大内容直接送入模型上下文。
 
 实现参考了 Mao 的工具注册/描述思路（Mao MIT License，见 `docs/research/mao-reference.md`），本包保留独立实现与本项目 Apache-2.0 许可证，不复制 Mao 源文件。工具结果区分 success、error、denied、cancelled。真正写入需要后续 Runner 审批执行阶段重新校验前置 SHA，并在非特权沙箱中执行。

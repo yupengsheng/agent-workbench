@@ -312,6 +312,13 @@ export const fileChangeReviewStatus = pgEnum('file_change_review_status', [
   'rejected',
   'expired',
 ]);
+export const fileChangeApplyStatus = pgEnum('file_change_apply_status', [
+  'not_started',
+  'applying',
+  'applied',
+  'failed',
+  'unknown',
+]);
 export const fileChangeReviews = pgTable(
   'file_change_reviews',
   {
@@ -324,9 +331,16 @@ export const fileChangeReviews = pgTable(
       .unique()
       .references(() => runSteps.id, { onDelete: 'cascade' }),
     preview: jsonb('preview').$type<FileChangePreview>().notNull(),
+    proposedContent: text('proposed_content').notNull(),
     digest: text('digest').notNull(),
     policyVersion: text('policy_version').notNull().default('file-review-v1'),
     status: fileChangeReviewStatus('status').notNull().default('pending'),
+    applyStatus: fileChangeApplyStatus('apply_status').notNull().default('not_started'),
+    applyOwner: uuid('apply_owner'),
+    applyStartedAt: timestamp('apply_started_at', { withTimezone: true }),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    applyErrorCode: text('apply_error_code'),
+    applyErrorMessage: text('apply_error_message'),
     ...auditTimestamps,
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),

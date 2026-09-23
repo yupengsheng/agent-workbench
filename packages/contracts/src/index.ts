@@ -44,5 +44,11 @@ export type {
 export { parseChatRequest } from './chat-validation.js';
 export type { ChatAcceptedResponse } from './models.js';
 export type { RunDetailResponse } from './runs.js';
-export type { FileChangePreview, FileChangeSummary, FileChangeStatus } from './file-changes.js';
-export { parseFileChangePreview } from './file-changes.js';
+export type {
+  FileChangeApplicationStatus,
+  FileChangePreview,
+  FileChangeProposal,
+  FileChangeSummary,
+  FileChangeStatus,
+} from './file-changes.js';
+export { parseFileChangePreview, parseFileChangeProposal } from './file-changes.js';

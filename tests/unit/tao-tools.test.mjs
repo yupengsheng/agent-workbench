@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createReadOnlyToolRegistry } from '../../packages/tools/dist/index.js';
+import { applyFileChange, createReadOnlyToolRegistry } from '../../packages/tools/dist/index.js';
 import { AgentLoopError, executeAgentLoop } from '../../packages/runtime/dist/index.js';
 
 const workspaceId = '11111111-1111-4111-8111-111111111111';
@@ -72,6 +73,7 @@ test('read-only tools enforce workspace boundaries and return structured observa
   assert.match(change.patch, /-export const answer = 42;/);
   assert.match(change.patch, /\+export const answer = 43;/);
   assert.notEqual(change.before.sha256, change.after.sha256);
+  assert.equal(proposal.fileChange.content, proposalContent);
   assert.equal(
     await readFile(join(workspace, 'src', 'hello.ts'), 'utf8'),
     'export const answer = 42;\n',
@@ -85,6 +87,50 @@ test('read-only tools enforce workspace boundaries and return structured observa
   );
   assert.equal(invalidUtf8.status, 'denied');
   assert.equal(invalidUtf8.errorCode, 'invalid_utf8');
+});
+
+test('approved file changes require the original hash and replace atomically', async () => {
+  const root = await mkdtemp('/tmp/agent-workbench-apply-');
+  const workspace = join(root, workspaceId);
+  try {
+    await mkdir(workspace, { recursive: true });
+    await writeFile(join(workspace, 'README.md'), 'old\n');
+    const before = createHash('sha256').update('old\n').digest('hex');
+    const after = createHash('sha256').update('new\n').digest('hex');
+    const proposal = {
+      kind: 'file_change_proposal',
+      version: 1,
+      path: 'README.md',
+      operation: 'update',
+      changed: true,
+      reason: '测试原子替换',
+      before: { sha256: before, bytes: 4 },
+      after: { sha256: after, bytes: 4 },
+      patch: '--- a/README.md\n+++ b/README.md\n',
+      approvalRequired: true,
+      approvalScope: 'single_file_exact_content',
+    };
+    assert.deepEqual(await applyFileChange(root, workspaceId, proposal, 'new\n'), {
+      status: 'applied',
+    });
+    assert.equal(await readFile(join(workspace, 'README.md'), 'utf8'), 'new\n');
+    assert.deepEqual(await applyFileChange(root, workspaceId, proposal, 'new\n'), {
+      status: 'failed',
+      code: 'before_hash_mismatch',
+      message: '目标文件在审批后已经发生变化',
+    });
+
+    await writeFile(join(root, 'outside.txt'), 'outside\n');
+    await symlink(join(root, 'outside.txt'), join(workspace, 'escape.txt'));
+    assert.equal(
+      (await applyFileChange(root, workspaceId, { ...proposal, path: 'escape.txt' }, 'new\n'))
+        .status,
+      'failed',
+    );
+    assert.equal(await readFile(join(root, 'outside.txt'), 'utf8'), 'outside\n');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('TAO loop observes tool output and stops on a final model answer', async () => {

@@ -8,7 +8,7 @@ C 端对话通过 `POST /api/v1/workspaces/:workspaceId/chat` 提交，接收当
 
 `GET /api/v1/workspaces/:workspaceId/runs/:runId` 返回运行快照、步骤和事件；`POST /.../runs/:runId/cancel` 提交取消。排队可直接取消，执行中先写 `cancelRequestedAt`，等待 Runner 结束本地请求后确认终态。查询和取消均验证工作空间成员与会话所有者；同一 Session 不能提交多个活动 Run，冲突返回 409。
 
-Session 列表和详情仍在 `/api/v1/workspaces/:workspaceId/sessions` 与 `/sessions/:sessionId`；认证使用 `sessions`，聊天使用 `chat_sessions`。API 与 Runner 共用 `packages/persistence`，避免重复 Schema/密钥逻辑。Run SSE、TAO 只读工具和文件变更提案审阅已接入；批准当前只记录决定，不会写入工作区。详细决策见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md) 和 [ADR-0011](../../docs/decisions/0011-file-change-review.md)。
+Session 列表和详情仍在 `/api/v1/workspaces/:workspaceId/sessions` 与 `/sessions/:sessionId`；认证使用 `sessions`，聊天使用 `chat_sessions`。API 与 Runner 共用 `packages/persistence`，避免重复 Schema/密钥逻辑。Run SSE、TAO 只读工具和文件变更提案审阅已接入；批准后由 Runner 负责受控应用，API 不直接写入工作区。详细决策见 [ADR-0006](../../docs/decisions/0006-background-chat-runner.md) 和 [ADR-0011](../../docs/decisions/0011-file-change-review.md)。
 
 M1 提供本地账号和 Workspace 基础接口：`POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`GET /api/v1/auth/me`、`GET /api/v1/workspaces` 与 `POST /api/v1/workspaces`。登录会话只以哈希形式保存到数据库，浏览器使用 HttpOnly Cookie；密码使用标准 Argon2id 编码格式，通过 `hash-wasm` 的 WASM 实现计算，避免部署时依赖原生编译工具链；服务端不会向前端返回密码或模型密钥。
 

@@ -15,6 +15,7 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
+    "@agent-workbench/contracts": "0.1.0",
     "diff": "^8.0.4"
   }
 }

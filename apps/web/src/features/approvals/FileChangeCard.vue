@@ -13,10 +13,17 @@ const saving = ref(false);
 const error = ref('');
 const statusLabels = {
   pending: '待审阅',
-  approved: '已批准 · 未应用',
+  approved: '已批准 · 等待应用',
   rejected: '已拒绝',
   expired: '已过期',
 };
+
+function statusLabel() {
+  if (props.change.applicationStatus === 'applied') return '已应用';
+  if (props.change.applicationStatus === 'failed') return '应用失败';
+  if (props.change.applicationStatus === 'unknown') return '应用结果待核对';
+  return statusLabels[props.change.status];
+}
 
 async function decide(decision: 'approve' | 'reject') {
   if (saving.value) return;
@@ -38,7 +45,7 @@ async function decide(decision: 'approve' | 'reject') {
   <article class="file-change-card" aria-label="文件变更提案">
     <header>
       <strong>{{ change.preview.path }}</strong>
-      <span class="status-badge" :class="change.status">{{ statusLabels[change.status] }}</span>
+      <span class="status-badge" :class="change.status">{{ statusLabel() }}</span>
     </header>
     <p>{{ change.preview.reason }}</p>
     <details open>
@@ -58,7 +65,14 @@ async function decide(decision: 'approve' | 'reject') {
       </p>
       <p>审阅有效期：{{ new Date(change.expiresAt).toLocaleString('zh-CN') }}</p>
     </details>
-    <p class="muted">当前仅记录提案审阅结果，批准后仍未修改文件。</p>
+    <p v-if="change.applicationStatus === 'not_started'" class="muted">
+      批准已记录，Runner 将在重新校验文件后应用提案。
+    </p>
+    <p v-else-if="change.applicationStatus === 'applying'" class="muted">正在应用提案…</p>
+    <p v-else-if="change.applicationStatus === 'applied'" class="muted">文件已按审批内容应用。</p>
+    <p v-else-if="change.applyErrorMessage" class="form-error" role="alert">
+      {{ change.applyErrorMessage }}
+    </p>
     <div v-if="change.status === 'pending'" class="editor-actions">
       <button type="button" :disabled="saving" @click="decide('reject')">拒绝提案</button>
       <button
