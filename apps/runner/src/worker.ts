@@ -340,7 +340,16 @@ export async function executeRun(
       baseUrl: connection.baseUrl,
       defaultModel: connection.modelIdentifier,
     });
-    const toolRegistry = createReadOnlyToolRegistry();
+    // Shell execution is a two-key opt-in: an administrator must enable the
+    // Runner sandbox, and the model connection must explicitly declare shell
+    // capability. Missing bubblewrap fails closed inside the tool boundary.
+    const toolRegistry = createReadOnlyToolRegistry(undefined, {
+      shell: {
+        enabled:
+          process.env.AGENT_WORKBENCH_ENABLE_SHELL === 'true' &&
+          connection.capabilities.shell === true,
+      },
+    });
     const toolDefinitions =
       connection.capabilities.tools === true ? toolRegistry.definitions() : [];
     const result = await executeAgentLoop(

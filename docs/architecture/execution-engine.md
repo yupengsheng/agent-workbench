@@ -1,6 +1,6 @@
 # Think-Act-Observe 执行引擎
 
-状态：TAO 单层循环已实现。`apps/runner` 已实现独立单模型执行、租约、取消、只读工具和批准文件提案的受控应用；Shell、非特权沙箱、子 Agent 和完整检查点仍按阶段建设，见 [ADR-0006](../decisions/0006-background-chat-runner.md) 与 [ADR-0011](../decisions/0011-file-change-review.md)。
+状态：TAO 单层循环已实现。`apps/runner` 已实现独立单模型执行、租约、取消、只读工具、受控 Shell 沙箱和批准文件提案的受控应用；Shell 审批、结果不明、子 Agent 和完整检查点仍按阶段建设，见 [ADR-0006](../decisions/0006-background-chat-runner.md)、[ADR-0011](../decisions/0011-file-change-review.md) 与 [ADR-0012](../decisions/0012-sandbox-shell.md)。
 
 ## 主循环
 

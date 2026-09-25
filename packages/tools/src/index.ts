@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { createTwoFilesPatch } from 'diff';
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
+import { executeSandboxedShell, type SandboxShellOptions } from './sandbox-shell.js';
 
 export type ToolStatus = 'success' | 'error' | 'denied' | 'cancelled';
 
@@ -18,6 +19,11 @@ export interface ToolExecutionResult {
 export interface ToolContext {
   workspaceId: string;
   signal?: AbortSignal;
+}
+
+export interface ToolRegistryOptions {
+  /** Shell is opt-in and fail-closed when bubblewrap is unavailable. */
+  shell?: SandboxShellOptions & { enabled?: boolean };
 }
 
 export interface ToolDefinition {
@@ -310,7 +316,7 @@ export class ReadOnlyToolRegistry {
   private readonly resolver: WorkspacePathResolver;
   private readonly tools: ReadOnlyTool[];
 
-  constructor(rootDirectory: string) {
+  constructor(rootDirectory: string, options: ToolRegistryOptions = {}) {
     this.resolver = new WorkspacePathResolver(rootDirectory);
     this.tools = [
       this.createReadFileTool(),
@@ -319,6 +325,74 @@ export class ReadOnlyToolRegistry {
       this.createWorkspaceAnalysisTool(),
       this.createFileChangeProposalTool(),
     ];
+    if (options.shell?.enabled === true) this.tools.push(this.createShellTool(options.shell));
+  }
+
+  private createShellTool(options: SandboxShellOptions): ReadOnlyTool {
+    const resolver = this.resolver;
+    return {
+      definition: {
+        type: 'function',
+        function: {
+          name: 'run_shell',
+          description:
+            '在工作区内使用非特权、默认断网的 bubblewrap 沙箱执行命令。命令有 CPU、内存、进程数、时长和输出限制；沙箱不可用时拒绝执行。',
+          parameters: {
+            type: 'object',
+            properties: {
+              command: {
+                type: 'string',
+                description:
+                  '要执行的 Shell 命令，最多 4096 个字符；当前策略不允许访问平台环境变量。',
+              },
+            },
+            required: ['command'],
+            additionalProperties: false,
+          },
+        },
+      },
+      async execute(argumentsJson, context) {
+        const cancelled = checkCancelled(context.signal);
+        if (cancelled) return cancelled;
+        const args = parseObject(argumentsJson);
+        if (
+          !args ||
+          Object.keys(args).some((key) => key !== 'command') ||
+          typeof args.command !== 'string'
+        ) {
+          return errorResult('error', 'invalid_arguments', 'command 参数不合法');
+        }
+        try {
+          const workspace = await resolver.workspaceDirectory(context.workspaceId);
+          const result = await executeSandboxedShell(
+            workspace,
+            args.command,
+            options,
+            context.signal,
+          );
+          const status = result.status === 'cancelled' ? 'cancelled' : result.status;
+          const payload = {
+            command: args.command,
+            status,
+            exitCode: result.exitCode,
+            signal: result.signal,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            truncated: result.truncated,
+            durationMs: result.durationMs,
+            ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+          };
+          return makeResult(status, payload, {
+            truncated: result.truncated,
+            ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+          });
+        } catch (error) {
+          return context.signal?.aborted
+            ? errorResult('cancelled', 'cancelled', '工具执行已取消')
+            : policyResult(error);
+        }
+      },
+    };
   }
 
   definitions(): ToolDefinition[] {
@@ -743,8 +817,15 @@ export class ReadOnlyToolRegistry {
 export function createReadOnlyToolRegistry(
   rootDirectory = process.env.AGENT_WORKBENCH_WORKSPACE_ROOT ??
     join(process.cwd(), '.data', 'workspaces'),
+  options: ToolRegistryOptions = {},
 ) {
-  return new ReadOnlyToolRegistry(rootDirectory);
+  return new ReadOnlyToolRegistry(rootDirectory, options);
 }
 
 export { applyFileChange, type FileChangeApplyResult } from './file-change-applier.js';
+export {
+  executeSandboxedShell,
+  sandboxDefaults,
+  type SandboxShellOptions,
+  type SandboxShellResult,
+} from './sandbox-shell.js';
