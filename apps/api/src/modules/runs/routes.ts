@@ -1,4 +1,5 @@
 import { listFileChanges } from '@agent-workbench/persistence/file-changes';
+import { listShellCommands } from '@agent-workbench/persistence/shell-commands';
 import { requestRunCancellation } from '@agent-workbench/persistence/runs';
 import type {
   RunDetailResponse,
@@ -139,8 +140,9 @@ async function runDetail(
   database: DatabaseHandle,
   row: typeof runs.$inferSelect,
 ): Promise<RunDetailResponse> {
-  const [fileChanges, steps, events] = await Promise.all([
+  const [fileChanges, shellCommands, steps, events] = await Promise.all([
     listFileChanges(database, row.id),
+    listShellCommands(database, row.id),
     database.db
       .select()
       .from(runSteps)
@@ -152,7 +154,13 @@ async function runDetail(
       .where(eq(runEvents.runId, row.id))
       .orderBy(asc(runEvents.sequence)),
   ]);
-  return { run: toRun(row), steps: steps.map(toStep), events: events.map(toEvent), fileChanges };
+  return {
+    run: toRun(row),
+    steps: steps.map(toStep),
+    events: events.map(toEvent),
+    fileChanges,
+    shellCommands,
+  };
 }
 
 export async function registerRunRoutes(

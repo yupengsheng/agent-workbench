@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { parseFileChangeProposal, parseFileChangePreview } from '@agent-workbench/contracts';
+import {
+  parseFileChangeProposal,
+  parseFileChangePreview,
+  parseShellCommandProposal,
+} from '@agent-workbench/contracts';
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { AppDatabase, DatabaseHandle } from './client.js';
 import {
@@ -9,6 +13,7 @@ import {
   runEvents,
   runs,
   runSteps,
+  shellCommandReviews,
 } from './schema.js';
 
 type Transaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -123,6 +128,7 @@ export async function finishToolStep(
     const [run] = await tx.select().from(runs).where(validLease(runId, token)).for('update');
     if (!run) return false;
     let fileChangeProposal: ReturnType<typeof parseFileChangeProposal>;
+    let shellCommandProposal: ReturnType<typeof parseShellCommandProposal>;
     let persistedOutput = outcome.status === 'succeeded' ? outcome.output : null;
     if (
       outcome.status === 'succeeded' &&
@@ -144,6 +150,24 @@ export async function finishToolStep(
       const sanitizedPreview = parseFileChangePreview(preview);
       if (!sanitizedPreview) throw new Error('invalid file change preview');
       persistedOutput = { ...outcome.output, fileChange: sanitizedPreview };
+    }
+    if (
+      outcome.status === 'succeeded' &&
+      outcome.output.toolName === 'propose_shell_command' &&
+      outcome.output.status === 'success' &&
+      typeof outcome.output.content === 'string'
+    ) {
+      let proposalInput: unknown = outcome.output.shellCommand;
+      if (proposalInput === undefined) {
+        try {
+          proposalInput = JSON.parse(outcome.output.content);
+        } catch {
+          proposalInput = undefined;
+        }
+      }
+      shellCommandProposal = parseShellCommandProposal(proposalInput);
+      if (!shellCommandProposal) throw new Error('invalid shell command proposal');
+      persistedOutput = { ...outcome.output, shellCommand: shellCommandProposal };
     }
     const values = {
       status: outcome.status,
@@ -186,6 +210,33 @@ export async function finishToolStep(
       });
       await appendEvents(tx, runId, [
         { type: 'file_change.proposed', stepId, payload: { proposalId: proposal.id, digest } },
+      ]);
+    }
+    if (shellCommandProposal) {
+      const digest = createHash('sha256')
+        .update(JSON.stringify(shellCommandProposal))
+        .digest('hex');
+      const [proposal] = await tx
+        .insert(shellCommandReviews)
+        .values({
+          runId,
+          stepId,
+          proposal: shellCommandProposal,
+          digest,
+          expiresAt: sql`now() + interval '24 hours'`,
+        })
+        .returning({ id: shellCommandReviews.id });
+      if (!proposal) throw new Error('shell command proposal insert returned no row');
+      await tx.insert(auditRecords).values({
+        workspaceId: run.workspaceId,
+        actorUserId: run.triggerUserId,
+        action: 'shell_command.proposed',
+        resourceType: 'shell_command',
+        resourceId: proposal.id,
+        metadata: { runId, stepId, digest, policyVersion: 'shell-review-v1' },
+      });
+      await appendEvents(tx, runId, [
+        { type: 'shell_command.proposed', stepId, payload: { proposalId: proposal.id, digest } },
       ]);
     }
     await appendEvents(tx, runId, [

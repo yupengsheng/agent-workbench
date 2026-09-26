@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { decideFileChange } from '@agent-workbench/persistence/file-changes';
+import { decideShellCommand } from '@agent-workbench/persistence/shell-commands';
 import type { DatabaseHandle } from '../../db/client.js';
 import { getAuthenticatedUser } from '../identity/service.js';
 
@@ -47,6 +48,50 @@ export async function registerApprovalRoutes(
         conflict: [409, '提案或审批状态已变化，请刷新后查看'],
         expired: [409, '提案已过期，请生成新的提案'],
         run_not_succeeded: [409, '任务尚未成功完成，不能批准此提案'],
+      } as const;
+      const [status, message] = errors[result.error];
+      return reply.code(status).send({ error: { code: result.error, message } });
+    },
+  );
+
+  app.post<{ Params: { workspaceId: string; runId: string; commandId: string }; Body: unknown }>(
+    '/api/v1/workspaces/:workspaceId/runs/:runId/shell-commands/:commandId/decision',
+    async (request, reply) => {
+      if (!database)
+        return reply
+          .code(503)
+          .send({ error: { code: 'database_unavailable', message: '服务暂时不可用' } });
+      const user = await getAuthenticatedUser(request, database);
+      if (!user)
+        return reply.code(401).send({ error: { code: 'unauthorized', message: '请先登录' } });
+      if (!Object.values(request.params).every((id) => uuid.test(id)))
+        return reply.code(404).send({ error: { code: 'not_found', message: '命令提案不存在' } });
+      const body = request.body as Record<string, unknown> | null;
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => !['decision', 'digest'].includes(key)) ||
+        !['approve', 'reject'].includes(String(body.decision)) ||
+        typeof body.digest !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(body.digest)
+      )
+        return reply.code(400).send({
+          error: { code: 'invalid_request', message: '请提供审批决定和所审阅命令的摘要' },
+        });
+      const result = await decideShellCommand(database, {
+        ...request.params,
+        userId: user.id,
+        digest: body.digest,
+        decision: body.decision as 'approve' | 'reject',
+      });
+      if ('command' in result) return reply.send(result.command);
+      const errors = {
+        not_found: [404, '命令提案不存在'],
+        forbidden: [403, '当前角色没有审批权限'],
+        conflict: [409, '命令提案或审批状态已变化，请刷新后查看'],
+        expired: [409, '命令提案已过期，请生成新的提案'],
+        run_not_succeeded: [409, '任务尚未成功完成，不能批准此命令'],
       } as const;
       const [status, message] = errors[result.error];
       return reply.code(status).send({ error: { code: result.error, message } });

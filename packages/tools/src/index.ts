@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { createTwoFilesPatch } from 'diff';
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
-import { executeSandboxedShell, type SandboxShellOptions } from './sandbox-shell.js';
+import { sandboxDefaults } from './sandbox-shell.js';
 
 export type ToolStatus = 'success' | 'error' | 'denied' | 'cancelled';
 
@@ -14,6 +14,8 @@ export interface ToolExecutionResult {
   errorCode?: string;
   /** Private Runner payload; never sent as the model observation. */
   fileChange?: Record<string, unknown>;
+  /** Exact Shell approval target; execution happens only after persisted approval. */
+  shellCommand?: Record<string, unknown>;
 }
 
 export interface ToolContext {
@@ -22,8 +24,8 @@ export interface ToolContext {
 }
 
 export interface ToolRegistryOptions {
-  /** Shell is opt-in and fail-closed when bubblewrap is unavailable. */
-  shell?: SandboxShellOptions & { enabled?: boolean };
+  /** Shell proposals are opt-in; they never execute in the model loop. */
+  shell?: { enabled?: boolean };
 }
 
 export interface ToolDefinition {
@@ -325,28 +327,28 @@ export class ReadOnlyToolRegistry {
       this.createWorkspaceAnalysisTool(),
       this.createFileChangeProposalTool(),
     ];
-    if (options.shell?.enabled === true) this.tools.push(this.createShellTool(options.shell));
+    if (options.shell?.enabled === true) this.tools.push(this.createShellCommandProposalTool());
   }
 
-  private createShellTool(options: SandboxShellOptions): ReadOnlyTool {
+  private createShellCommandProposalTool(): ReadOnlyTool {
     const resolver = this.resolver;
     return {
       definition: {
         type: 'function',
         function: {
-          name: 'run_shell',
+          name: 'propose_shell_command',
           description:
-            '在工作区内使用非特权、默认断网的 bubblewrap 沙箱执行命令。命令有 CPU、内存、进程数、时长和输出限制；沙箱不可用时拒绝执行。',
+            '提出一条待用户审阅的 Shell 命令。此工具不会执行命令；批准后 Runner 才会在非特权、默认断网的 bubblewrap 沙箱内执行一次。',
           parameters: {
             type: 'object',
             properties: {
               command: {
                 type: 'string',
-                description:
-                  '要执行的 Shell 命令，最多 4096 个字符；当前策略不允许访问平台环境变量。',
+                description: '完整 Shell 命令，最多 4096 个字符。',
               },
+              reason: { type: 'string', description: '执行目的，最多 500 个字符。' },
             },
-            required: ['command'],
+            required: ['command', 'reason'],
             additionalProperties: false,
           },
         },
@@ -357,35 +359,38 @@ export class ReadOnlyToolRegistry {
         const args = parseObject(argumentsJson);
         if (
           !args ||
-          Object.keys(args).some((key) => key !== 'command') ||
-          typeof args.command !== 'string'
+          Object.keys(args).some((key) => !['command', 'reason'].includes(key)) ||
+          typeof args.command !== 'string' ||
+          !args.command.trim() ||
+          args.command.length > sandboxDefaults.maxCommandLength ||
+          /\u0000/.test(args.command) ||
+          /[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(args.command) ||
+          typeof args.reason !== 'string' ||
+          !args.reason.trim() ||
+          args.reason.length > 500
         ) {
-          return errorResult('error', 'invalid_arguments', 'command 参数不合法');
+          return errorResult('error', 'invalid_arguments', 'command 或 reason 参数不合法');
         }
         try {
-          const workspace = await resolver.workspaceDirectory(context.workspaceId);
-          const result = await executeSandboxedShell(
-            workspace,
-            args.command,
-            options,
-            context.signal,
-          );
-          const status = result.status === 'cancelled' ? 'cancelled' : result.status;
-          const payload = {
+          await resolver.workspaceDirectory(context.workspaceId);
+          const proposal = {
+            kind: 'shell_command_proposal',
+            version: 1,
             command: args.command,
-            status,
-            exitCode: result.exitCode,
-            signal: result.signal,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            truncated: result.truncated,
-            durationMs: result.durationMs,
-            ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+            reason: args.reason.trim(),
+            approvalRequired: true,
+            approvalScope: 'single_command_exact_text',
+            sandbox: {
+              network: 'disabled',
+              workspaceAccess: 'read_write',
+              timeoutMs: sandboxDefaults.timeoutMs,
+              cpuSeconds: sandboxDefaults.cpuSeconds,
+              memoryBytes: sandboxDefaults.memoryBytes,
+              maxProcesses: sandboxDefaults.maxProcesses,
+              maxOutputBytes: sandboxDefaults.maxOutputBytes,
+            },
           };
-          return makeResult(status, payload, {
-            truncated: result.truncated,
-            ...(result.errorCode ? { errorCode: result.errorCode } : {}),
-          });
+          return { ...makeResult('success', proposal), shellCommand: proposal };
         } catch (error) {
           return context.signal?.aborted
             ? errorResult('cancelled', 'cancelled', '工具执行已取消')
@@ -825,6 +830,7 @@ export function createReadOnlyToolRegistry(
 export { applyFileChange, type FileChangeApplyResult } from './file-change-applier.js';
 export {
   executeSandboxedShell,
+  resolveSandboxWorkspace,
   sandboxDefaults,
   type SandboxShellOptions,
   type SandboxShellResult,

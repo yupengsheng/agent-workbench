@@ -1,7 +1,7 @@
-import { access } from 'node:fs/promises';
+import { access, realpath } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 
 export interface SandboxShellOptions {
   /** Absolute path to bubblewrap. The default is intentionally fixed and fail-closed. */
@@ -31,6 +31,7 @@ const DEFAULT_MEMORY_BYTES = 512 * 1024 * 1024;
 const DEFAULT_MAX_PROCESSES = 64;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_COMMAND_LENGTH = 4_096;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function positiveInteger(value: number | undefined, fallback: number, maximum: number): number {
   if (!Number.isSafeInteger(value) || value === undefined || value < 1) return fallback;
@@ -175,7 +176,7 @@ export async function executeSandboxedShell(
     '/workspace/.npmrc',
     '/workspace/.git-credentials',
   ]) {
-    mount.push('--tmpfs', path);
+    mount.push('--ro-bind', '/dev/null', path);
   }
 
   // ulimit is applied inside the user namespace and therefore remains a
@@ -299,6 +300,18 @@ export const sandboxDefaults = {
   maxCommandLength: MAX_COMMAND_LENGTH,
 } as const;
 
-export function defaultSandboxWorkspace(root: string, workspaceId: string): string {
-  return join(root, workspaceId);
+export async function resolveSandboxWorkspace(root: string, workspaceId: string): Promise<string> {
+  if (!UUID.test(workspaceId)) throw new Error('workspace_id_invalid');
+  const actualRoot = await realpath(resolve(root));
+  const workspace = await realpath(resolve(actualRoot, workspaceId));
+  const pathFromRoot = relative(actualRoot, workspace);
+  if (
+    pathFromRoot === '' ||
+    pathFromRoot === '..' ||
+    pathFromRoot.startsWith(`..${sep}`) ||
+    pathFromRoot.startsWith(sep)
+  ) {
+    throw new Error('workspace_path_denied');
+  }
+  return workspace;
 }

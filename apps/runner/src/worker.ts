@@ -11,7 +11,12 @@ import {
   TypeSafeJevModelRouter,
   type ToolCall,
 } from '@agent-workbench/runtime';
-import { applyFileChange, createReadOnlyToolRegistry } from '@agent-workbench/tools';
+import {
+  applyFileChange,
+  createReadOnlyToolRegistry,
+  executeSandboxedShell,
+  resolveSandboxWorkspace,
+} from '@agent-workbench/tools';
 import type { DatabaseHandle } from '@agent-workbench/persistence/client';
 import {
   memberships,
@@ -35,6 +40,11 @@ import {
   finishFileChangeApplication,
   type FileChangeApplicationOutcome,
 } from '@agent-workbench/persistence/file-changes';
+import {
+  claimApprovedShellCommand,
+  finishShellCommandExecution,
+  type ShellCommandExecutionOutcome,
+} from '@agent-workbench/persistence/shell-commands';
 
 const defaultWorkspaceRoot =
   process.env.AGENT_WORKBENCH_WORKSPACE_ROOT ?? join(process.cwd(), '.data', 'workspaces');
@@ -65,6 +75,75 @@ export async function applyApprovedFileChange(
     owner,
     outcome,
   });
+  return true;
+}
+
+/** Execute one approved exact command in the non-privileged sandbox. */
+export async function executeApprovedShellCommand(
+  database: DatabaseHandle,
+  owner: string,
+  workspaceRoot = defaultWorkspaceRoot,
+  signal?: AbortSignal,
+  execute: typeof executeSandboxedShell = executeSandboxedShell,
+) {
+  if (signal?.aborted) return false;
+  const item = await claimApprovedShellCommand(database, owner);
+  if (!item) return false;
+  let outcome: ShellCommandExecutionOutcome;
+  try {
+    const workspace = await resolveSandboxWorkspace(workspaceRoot, item.workspaceId);
+    const execution = await execute(
+      workspace,
+      item.proposal.command,
+      {
+        timeoutMs: item.proposal.sandbox.timeoutMs,
+        cpuSeconds: item.proposal.sandbox.cpuSeconds,
+        memoryBytes: item.proposal.sandbox.memoryBytes,
+        maxProcesses: item.proposal.sandbox.maxProcesses,
+        maxOutputBytes: item.proposal.sandbox.maxOutputBytes,
+      },
+      signal,
+    );
+    const result = {
+      exitCode: execution.exitCode,
+      signal: execution.signal,
+      stdout: execution.stdout,
+      stderr: execution.stderr,
+      truncated: execution.truncated,
+      durationMs: execution.durationMs,
+    };
+    outcome =
+      execution.status === 'success'
+        ? { status: 'succeeded', result }
+        : {
+            status: 'failed',
+            result,
+            code: execution.errorCode ?? 'shell_failed',
+            message:
+              execution.errorCode === 'timeout'
+                ? '命令执行超时，进程已终止'
+                : execution.errorCode === 'cancelled'
+                  ? '命令执行已取消，可能已产生部分工作区变更'
+                  : execution.errorCode === 'sandbox_unavailable'
+                    ? '执行沙箱不可用，命令未执行'
+                    : '命令未成功完成，请检查退出码和标准错误',
+          };
+  } catch (error) {
+    outcome = {
+      status: 'failed',
+      result: {
+        exitCode: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        truncated: false,
+        durationMs: 0,
+      },
+      code: 'workspace_unavailable',
+      message: error instanceof Error ? `无法访问工作区：${error.message}` : '无法访问工作区',
+    };
+  }
+  await finishShellCommandExecution(database, { id: item.id, owner, outcome });
   return true;
 }
 
@@ -397,6 +476,9 @@ export async function executeRun(
                       ...(observation.errorCode ? { errorCode: observation.errorCode } : {}),
                       ...(observation.truncated ? { truncated: true } : {}),
                       ...(observation.fileChange ? { fileChange: observation.fileChange } : {}),
+                      ...(observation.shellCommand
+                        ? { shellCommand: observation.shellCommand }
+                        : {}),
                     },
                   },
             );

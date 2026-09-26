@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
-import type { FileChangePreview } from '@agent-workbench/contracts';
+import type { FileChangePreview, ShellCommandProposal } from '@agent-workbench/contracts';
 import {
+  boolean,
   integer,
   index,
   jsonb,
@@ -349,6 +350,56 @@ export const fileChangeReviews = pgTable(
   (table) => [index('file_change_reviews_run_idx').on(table.runId)],
 );
 
+export const shellCommandReviewStatus = pgEnum('shell_command_review_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'expired',
+]);
+export const shellCommandExecutionStatus = pgEnum('shell_command_execution_status', [
+  'not_started',
+  'executing',
+  'succeeded',
+  'failed',
+  'unknown',
+]);
+export const shellCommandReviews = pgTable(
+  'shell_command_reviews',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    stepId: uuid('step_id')
+      .notNull()
+      .unique()
+      .references(() => runSteps.id, { onDelete: 'cascade' }),
+    proposal: jsonb('proposal').$type<ShellCommandProposal>().notNull(),
+    digest: text('digest').notNull(),
+    policyVersion: text('policy_version').notNull().default('shell-review-v1'),
+    status: shellCommandReviewStatus('status').notNull().default('pending'),
+    executionStatus: shellCommandExecutionStatus('execution_status')
+      .notNull()
+      .default('not_started'),
+    executionOwner: uuid('execution_owner'),
+    executionStartedAt: timestamp('execution_started_at', { withTimezone: true }),
+    executedAt: timestamp('executed_at', { withTimezone: true }),
+    exitCode: integer('exit_code'),
+    processSignal: text('process_signal'),
+    stdout: text('stdout'),
+    stderr: text('stderr'),
+    outputTruncated: boolean('output_truncated').notNull().default(false),
+    durationMs: integer('duration_ms'),
+    executionErrorCode: text('execution_error_code'),
+    executionErrorMessage: text('execution_error_message'),
+    ...auditTimestamps,
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedBy: uuid('decided_by').references(() => users.id),
+  },
+  (table) => [index('shell_command_reviews_run_idx').on(table.runId)],
+);
+
 export const workspaceRelations = relations(workspaces, ({ many }) => ({
   memberships: many(memberships),
   modelConnections: many(modelConnections),
@@ -366,6 +417,7 @@ export const userRelations = relations(users, ({ many }) => ({
   chatSessions: many(chatSessions),
   runs: many(runs),
   fileChangeDecisions: many(fileChangeReviews),
+  shellCommandDecisions: many(shellCommandReviews),
 }));
 
 export const sessionRelations = relations(sessions, ({ one }) => ({
@@ -419,6 +471,7 @@ export const runRelations = relations(runs, ({ one, many }) => ({
   events: many(runEvents),
   artifacts: many(artifacts),
   fileChanges: many(fileChangeReviews),
+  shellCommands: many(shellCommandReviews),
 }));
 
 export const runStepRelations = relations(runSteps, ({ one, many }) => ({
@@ -428,6 +481,7 @@ export const runStepRelations = relations(runSteps, ({ one, many }) => ({
   }),
   events: many(runEvents),
   fileChangeReview: one(fileChangeReviews),
+  shellCommandReview: one(shellCommandReviews),
 }));
 
 export const runEventRelations = relations(runEvents, ({ one }) => ({
@@ -467,8 +521,24 @@ export const fileChangeReviewRelations = relations(fileChangeReviews, ({ one }) 
   }),
 }));
 
+export const shellCommandReviewRelations = relations(shellCommandReviews, ({ one }) => ({
+  run: one(runs, {
+    fields: [shellCommandReviews.runId],
+    references: [runs.id],
+  }),
+  step: one(runSteps, {
+    fields: [shellCommandReviews.stepId],
+    references: [runSteps.id],
+  }),
+  decidedBy: one(users, {
+    fields: [shellCommandReviews.decidedBy],
+    references: [users.id],
+  }),
+}));
+
 export const schema = {
   fileChangeReviews,
+  shellCommandReviews,
   users,
   workspaces,
   memberships,

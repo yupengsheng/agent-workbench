@@ -52,3 +52,11 @@ export type {
   FileChangeStatus,
 } from './file-changes.js';
 export { parseFileChangePreview, parseFileChangeProposal } from './file-changes.js';
+export type {
+  ShellCommandExecutionStatus,
+  ShellCommandProposal,
+  ShellCommandResult,
+  ShellCommandStatus,
+  ShellCommandSummary,
+} from './shell-commands.js';
+export { parseShellCommandProposal } from './shell-commands.js';

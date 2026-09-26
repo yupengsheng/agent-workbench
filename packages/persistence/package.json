@@ -38,6 +38,10 @@
     "./file-changes": {
       "types": "./dist/file-changes.d.ts",
       "import": "./dist/file-changes.js"
+    },
+    "./shell-commands": {
+      "types": "./dist/shell-commands.d.ts",
+      "import": "./dist/shell-commands.js"
     }
   }
 }

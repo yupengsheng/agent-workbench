@@ -1,4 +1,5 @@
 import type { FileChangeSummary } from './file-changes.js';
+import type { ShellCommandSummary } from './shell-commands.js';
 
 export type SessionStatus = 'active' | 'archived';
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -71,4 +72,5 @@ export interface RunDetailResponse {
   steps: RunStepSummary[];
   events: RunEventSummary[];
   fileChanges: FileChangeSummary[];
+  shellCommands: ShellCommandSummary[];
 }

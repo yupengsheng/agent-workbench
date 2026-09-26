@@ -42,6 +42,10 @@ jobs:
         run: node --test tests/integration/file-change-review.test.mjs
         env:
           TEST_DATABASE_URL: postgres://workbench_test:workbench_test@127.0.0.1:5432/workbench_test
+      - name: Verify Shell command review boundaries
+        run: node --test tests/integration/shell-command-review.test.mjs
+        env:
+          TEST_DATABASE_URL: postgres://workbench_test:workbench_test@127.0.0.1:5432/workbench_test
       - run: npx playwright install --with-deps chromium
       - name: Verify chat restoration in the browser
         run: npx playwright test --config tests/e2e/playwright.config.mjs

@@ -12,6 +12,7 @@ import type {
   ModelConnectionTestResponse,
   SessionDetailResponse,
   SessionListResponse,
+  ShellCommandSummary,
   WorkspaceListResponse,
 } from '@agent-workbench/contracts';
 
@@ -158,6 +159,22 @@ export function decideFileChange(
 ): Promise<FileChangeSummary> {
   return readJson(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(proposal.runId)}/file-changes/${encodeURIComponent(proposal.id)}/decision`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decision, digest: proposal.digest }),
+      signal: AbortSignal.timeout(10000),
+    },
+  );
+}
+
+export function decideShellCommand(
+  workspaceId: string,
+  proposal: ShellCommandSummary,
+  decision: 'approve' | 'reject',
+): Promise<ShellCommandSummary> {
+  return readJson(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(proposal.runId)}/shell-commands/${encodeURIComponent(proposal.id)}/decision`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

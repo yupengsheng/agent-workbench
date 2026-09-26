@@ -6,9 +6,11 @@ import type {
   ModelConnectionSummary,
   RunEventSummary,
   RunDetailResponse,
+  ShellCommandSummary,
 } from '@agent-workbench/contracts';
 import { chatWithModel, getSession, getRun, cancelRun, openRunEventStream } from '../../lib/api';
 import FileChangeCard from '../approvals/FileChangeCard.vue';
+import ShellCommandCard from '../approvals/ShellCommandCard.vue';
 
 const props = defineProps<{
   workspaceId: string;
@@ -46,6 +48,7 @@ const runState = ref('');
 const cancelling = ref(false);
 let disposed = false;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
+const reviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let eventStream: EventSource | undefined;
 let eventStreamRunId = '';
 let eventStreamFailed = false;
@@ -56,6 +59,9 @@ const reviewRuns = ref<Record<string, RunDetailResponse>>({});
 const fileChanges = computed(() =>
   Object.values(reviewRuns.value).flatMap((detail) => detail.fileChanges ?? []),
 );
+const shellCommands = computed(() =>
+  Object.values(reviewRuns.value).flatMap((detail) => detail.shellCommands ?? []),
+);
 
 function updateFileChange(change: FileChangeSummary) {
   const detail = reviewRuns.value[change.runId];
@@ -63,11 +69,20 @@ function updateFileChange(change: FileChangeSummary) {
     detail.fileChanges = detail.fileChanges.map((item) => (item.id === change.id ? change : item));
 }
 
+function updateShellCommand(command: ShellCommandSummary) {
+  const detail = reviewRuns.value[command.runId];
+  if (detail)
+    detail.shellCommands = (detail.shellCommands ?? []).map((item) =>
+      item.id === command.id ? command : item,
+    );
+}
+
 async function refreshReview(runId: string) {
   try {
     const detail = await getRun(props.workspaceId, runId);
     if (disposed) return;
     reviewRuns.value[runId] = detail;
+    if (hasPendingApprovalExecution(detail)) scheduleReviewRefresh(runId);
     if (activeRunId.value === runId) {
       runEvents.value = detail.events;
       emitInspector();
@@ -75,6 +90,39 @@ async function refreshReview(runId: string) {
   } catch {
     if (!disposed) error.value = '刷新审批状态失败，请重试或刷新页面';
   }
+}
+
+function hasPendingApprovalExecution(detail: RunDetailResponse): boolean {
+  return (
+    (detail.fileChanges ?? []).some(
+      (change) =>
+        change.status === 'approved' &&
+        (change.applicationStatus === 'not_started' || change.applicationStatus === 'applying'),
+    ) ||
+    (detail.shellCommands ?? []).some(
+      (command) =>
+        command.status === 'approved' &&
+        (command.executionStatus === 'not_started' || command.executionStatus === 'executing'),
+    )
+  );
+}
+
+function scheduleReviewRefresh(runId: string) {
+  if (disposed) return;
+  const existing = reviewTimers.get(runId);
+  if (existing) clearTimeout(existing);
+  reviewTimers.set(
+    runId,
+    setTimeout(() => {
+      reviewTimers.delete(runId);
+      void refreshReview(runId);
+    }, 1000),
+  );
+}
+
+function clearReviewTimers() {
+  for (const timer of reviewTimers.values()) clearTimeout(timer);
+  reviewTimers.clear();
 }
 
 function emitInspector() {
@@ -155,6 +203,12 @@ function eventLabel(event: RunEventSummary): string {
   }
   if (event.type === 'step.completed') return '模型步骤已完成';
   if (event.type === 'step.cancelled') return '步骤已取消';
+  if (event.type === 'shell_command.proposed') return 'Shell 命令等待审批';
+  if (event.type === 'shell_command.approved') return 'Shell 命令已批准';
+  if (event.type === 'shell_command.rejected') return 'Shell 命令已拒绝';
+  if (event.type === 'shell_command.succeeded') return 'Shell 命令执行成功';
+  if (event.type === 'shell_command.failed') return 'Shell 命令执行失败';
+  if (event.type === 'shell_command.unknown') return 'Shell 命令执行结果待核对';
   if (event.type === 'run.started') return '执行器已开始处理任务';
   if (event.type === 'run.succeeded') return '任务已完成';
   if (event.type === 'run.cancelled') return '任务已取消';
@@ -222,6 +276,9 @@ async function restoreSession() {
     if (disposed) return;
     sessionId.value = detail.session.id;
     reviewRuns.value = Object.fromEntries(detail.runs.map((run) => [run.run.id, run]));
+    for (const run of detail.runs) {
+      if (hasPendingApprovalExecution(run)) scheduleReviewRefresh(run.run.id);
+    }
     if (latestRun) {
       applyRun(latestRun);
       if (pending.value) schedulePoll();
@@ -326,6 +383,7 @@ function clearConversation() {
   resolvedModelId.value = '';
   runEvents.value = [];
   reviewRuns.value = {};
+  clearReviewTimers();
   closeEventStream();
   eventStreamFailed = false;
   runState.value = '';
@@ -385,6 +443,7 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true;
   if (pollTimer) clearTimeout(pollTimer);
+  clearReviewTimers();
   closeEventStream();
 });
 </script>
@@ -475,6 +534,21 @@ onUnmounted(() => {
           "
           @changed="updateFileChange"
           @refresh="refreshReview(change.runId)"
+        />
+      </section>
+      <section v-if="shellCommands.length" aria-label="命令审阅">
+        <h3>命令审阅</h3>
+        <ShellCommandCard
+          v-for="command in shellCommands"
+          :key="command.id"
+          :workspace-id="workspaceId"
+          :command="command"
+          :can-approve="
+            reviewRuns[command.runId]?.run.status === 'succeeded' &&
+            !reviewRuns[command.runId]?.run.cancelRequestedAt
+          "
+          @changed="updateShellCommand"
+          @refresh="refreshReview(command.runId)"
         />
       </section>
       <form class="chat-composer" @submit.prevent="sendMessage">

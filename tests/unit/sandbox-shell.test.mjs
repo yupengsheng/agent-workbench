@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -21,23 +21,41 @@ test('sandbox shell refuses to fall back to a host shell', async () => {
 });
 
 test(
-  'sandbox shell runs as an unprivileged, network-isolated process and writes only in the workspace',
+  'shell tool proposes an exact command without executing it',
   { skip: !hasBubblewrap },
   async () => {
     const root = await mkdtemp('/tmp/agent-workbench-shell-');
     const workspace = join(root, workspaceId);
-    await (await import('node:fs/promises')).mkdir(workspace, { recursive: true });
+    await mkdir(workspace, { recursive: true });
+    await writeFile(join(workspace, '.env'), 'DATABASE_URL=must-not-leak\n');
     try {
-      const registry = createReadOnlyToolRegistry(root, {
-        shell: { enabled: true, timeoutMs: 5_000 },
-      });
+      const registry = createReadOnlyToolRegistry(root, { shell: { enabled: true } });
+      assert.equal(
+        registry.definitions().some((definition) => definition.function.name === 'run_shell'),
+        false,
+      );
       const result = await registry.execute(
-        'run_shell',
-        JSON.stringify({ command: 'printf safe > result.txt; printf "uid=%s" "$(id -u)"' }),
+        'propose_shell_command',
+        JSON.stringify({
+          command: 'printf safe > result.txt',
+          reason: '验证审批前不执行命令',
+        }),
         { workspaceId },
       );
       assert.equal(result.status, 'success');
-      assert.match(result.content, /uid=65532/);
+      const proposal = JSON.parse(result.content);
+      assert.equal(proposal.kind, 'shell_command_proposal');
+      assert.equal(proposal.approvalRequired, true);
+      assert.equal(proposal.sandbox.network, 'disabled');
+      await assert.rejects(access(join(workspace, 'result.txt')));
+
+      const executed = await executeSandboxedShell(
+        workspace,
+        'test ! -s .env; printf safe > result.txt; printf "uid=%s" "$(id -u)"',
+        { timeoutMs: 5_000 },
+      );
+      assert.equal(executed.status, 'success');
+      assert.match(executed.stdout, /uid=65532/);
       assert.equal(await readFile(join(workspace, 'result.txt'), 'utf8'), 'safe');
     } finally {
       await rm(root, { recursive: true, force: true });
