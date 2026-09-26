@@ -29,5 +29,6 @@
 [ADR-0006：后台对话 Runner](decisions/0006-background-chat-runner.md)记录本轮实际架构、202 提交协议、租约与取消语义。
 [ADR-0011：文件变更审批](decisions/0011-file-change-review.md)记录提案、持久化审批和“批准不写盘”的边界。
 [ADR-0012：受控 Shell](decisions/0012-sandbox-shell.md)记录命令提案、审批、非特权执行、资源限制与结果不明语义。
+[ADR-0013：受控网页获取](decisions/0013-restricted-web-fetch.md)记录域名白名单、固定 DNS 解析地址、跳转校验和内容边界。
 
 业务模块的使用说明放模块 README；架构理由放 ADR；一次性调查记录放 research。避免在不同位置复制同一套部署步骤。

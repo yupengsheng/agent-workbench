@@ -2,7 +2,7 @@
 
 可私有化部署的多 Agent 工作台。目标是统一管理 Agent、模型、用户与审计，通过 Think-Act-Observe 引擎执行文件、命令、网页和子任务操作。
 
-**当前阶段：M3 受控动作增量建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。独立 Runner 已支持后台执行、租约、取消和异常终态；首版 TAO 循环、受限只读文件工具、SSE、文件变更审阅、单文件应用及审批后非特权 Shell 执行已落地。生产级磁盘/cgroup 隔离、网页工具和多 Agent 委派仍按路线建设。
+**当前阶段：M3 受控动作增量建设中。** 已提供可运行的 Vue Web 用户/管理员界面、Fastify API、PostgreSQL 迁移、认证与资源权限、模型连接配置、DeepSeek/OpenAI-compatible 对话、Session/Run/Step/Event 持久化及页面刷新恢复。独立 Runner 已支持后台执行、租约、取消和异常终态；首版 TAO 循环、受限文件工具、结构化调用审计、白名单网页获取、SSE、文件变更审阅、单文件应用及审批后非特权 Shell 执行已落地。生产级磁盘/cgroup 隔离和多 Agent 委派仍按路线建设。
 
 ## 快速开始
 
@@ -44,7 +44,7 @@ agent-workbench/
 │   ├── contracts/             # HTTP、事件与工具协议的共享契约
 │   ├── runtime/               # 模型适配与 Think-Act-Observe 循环
 │   ├── persistence/           # API/Runner 共用数据库与 Run 事务
-│   └── tools/                 # 受限只读工具注册表（read_file/glob/grep）
+│   └── tools/                 # 文件、受控 Shell 与白名单网页工具
 ├── docs/
 │   ├── product/               # 定位、需求、页面与角色
 │   ├── architecture/          # 数据模型、执行、事件、安全、扩展

@@ -15,6 +15,7 @@ import {
   applyFileChange,
   createReadOnlyToolRegistry,
   executeSandboxedShell,
+  parseWebFetchAllowlist,
   resolveSandboxWorkspace,
   type ToolExecutionResult,
 } from '@agent-workbench/tools';
@@ -50,6 +51,9 @@ import {
 
 const defaultWorkspaceRoot =
   process.env.AGENT_WORKBENCH_WORKSPACE_ROOT ?? join(process.cwd(), '.data', 'workspaces');
+const webFetchAllowedHosts = parseWebFetchAllowlist(
+  process.env.AGENT_WORKBENCH_WEB_FETCH_ALLOWLIST,
+);
 
 /** Execute one approved, exact-content file proposal on the Runner side. */
 export async function applyApprovedFileChange(
@@ -429,6 +433,13 @@ export async function executeRun(
         enabled:
           process.env.AGENT_WORKBENCH_ENABLE_SHELL === 'true' &&
           connection.capabilities.shell === true,
+      },
+      web: {
+        enabled:
+          process.env.AGENT_WORKBENCH_ENABLE_WEB_FETCH === 'true' &&
+          connection.capabilities.web === true &&
+          webFetchAllowedHosts.length > 0,
+        allowedHosts: webFetchAllowedHosts,
       },
     });
     const toolDefinitions =

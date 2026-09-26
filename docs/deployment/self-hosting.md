@@ -74,6 +74,8 @@ MVP 离线验收针对文件分析、受限命令和报告生成；外部网页�
 
 `0006_runner_leases.sql` 为追加字段/索引迁移。发布脚本先构建和迁移，再停止上一版 Runner/API/Web，启动三个进程并确认 Runner PID 存活。API 与 Runner 共用原有 `.env`，不更换 `MODEL_SECRET_ENCRYPTION_KEY`。启用聊天的 Jev 自动选模时，在该文件加入 `TYPESAFE_API_KEY`，以及可选的 `TYPESAFE_ROUTER_TIMEOUT_MS`（默认 5000）和 `TYPESAFE_ROUTER_MIN_CONFIDENCE`（默认 0.65）；密钥只由 Runner 读取，不能写入模型连接或前端配置。
 
+网页工具默认关闭。启用时在同一 `.env` 中配置 `AGENT_WORKBENCH_ENABLE_WEB_FETCH=true` 和逗号分隔的 `AGENT_WORKBENCH_WEB_FETCH_ALLOWLIST`，再由管理员在具体模型连接上启用 `web` 能力。白名单支持精确主机和 `*.example.com`，不接受 URL、路径或端口。离线部署保持开关为 `false`；生产环境还应使用网络出口策略限制 Runner 实际可达范围。
+
 本次 `/chat` 改为 202 提交协议，必须同时发布 Web 并刷新旧页面。若回退到仅支持同步 200 的版本，应先停止新 Runner，核对未结束任务后再切换；应用回滚不会移除新数据库字段。旧版无租约 running 记录会在 Runner 启动后标记失败，不自动重新请求模型。
 
 Runner 日志与 PID 在部署根目录 `runtime/runner.log`、`runtime/runner.pid`。进程崩溃后的过期任务由仍活跃或重启后的 Runner 收敛；系统重启的自动拉起与生产进程监管仍需 M5 交付。

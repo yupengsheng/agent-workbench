@@ -46,6 +46,7 @@ const capabilityOptions = [
   { key: 'streaming', label: '流式输出' },
   { key: 'tools', label: '工具调用' },
   { key: 'shell', label: '受控 Shell（需沙箱）' },
+  { key: 'web', label: '受控网页获取（需白名单）' },
   { key: 'vision', label: '视觉输入' },
   { key: 'json_mode', label: 'JSON 模式' },
 ];

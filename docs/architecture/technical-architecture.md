@@ -1,6 +1,6 @@
 # 技术架构总设计
 
-状态：v0.3 目标架构。当前已实现用户/管理员 Web、身份配置、模型适配、持久化 Run、TAO 只读工具、SSE、文件变更与 Shell 命令的持久化审阅，以及独立单模型 Runner；实际依赖图与协议见 [ADR-0006](../decisions/0006-background-chat-runner.md)、[ADR-0011](../decisions/0011-file-change-review.md) 和 [ADR-0012](../decisions/0012-sandbox-shell.md)。生产级资源隔离、网页工具和多 Agent 按阶段实现。
+状态：v0.3 目标架构。当前已实现用户/管理员 Web、身份配置、模型适配、持久化 Run、TAO 工具循环、SSE、文件变更与 Shell 命令的持久化审阅、受控网页获取，以及独立单模型 Runner；实际依赖图与协议见 [ADR-0006](../decisions/0006-background-chat-runner.md)、[ADR-0011](../decisions/0011-file-change-review.md)、[ADR-0012](../decisions/0012-sandbox-shell.md) 和 [ADR-0013](../decisions/0013-restricted-web-fetch.md)。生产级资源隔离和多 Agent 按阶段实现。
 
 ## 设计目标
 
@@ -170,7 +170,7 @@ API 可以横向扩展，Runner 按能力标签和工作空间策略扩展。Pos
 
 ## 安全边界
 
-有效权限为用户授权、工作空间策略、Agent 版本权限、Run 授权和 Runner 能力的交集；子 Run 再与父 Run 取交集。Shell 和网页工具运行在受限环境，默认无外网，不能挂载 API 配置、数据库凭证或容器管理 socket。详细规则见[安全与权限](security.md)。
+有效权限为用户授权、工作空间策略、Agent 版本权限、Run 授权和 Runner 能力的交集；子 Run 再与父 Run 取交集。Shell 在默认断网的非特权环境执行；网页工具只访问部署白名单内、解析为公网地址的文本目标。执行工具不能挂载 API 配置、数据库凭证或容器管理 socket。详细规则见[安全与权限](security.md)。
 
 ## 质量属性与验收
 

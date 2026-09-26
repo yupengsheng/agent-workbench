@@ -51,4 +51,6 @@ TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db \
 
 真实模型质量测试单独按需运行，不作为每次 CI 的无界外网依赖。固定模型版本、样例和预算，报告结果变化而非只断言模型请求成功。
 
+`web-fetch.test.mjs` 使用注入的 DNS 和传输响应验证网页策略，不依赖真实互联网。覆盖私网、环回、链路本地、元数据地址、IPv4 映射 IPv6、混合 DNS、跳转复检、HTTPS 降级、超时、取消、文本类型和工具默认关闭。
+
 Runner 回归还验证竞争领取一次、同 Session 并发返回 409、重复取消幂等、运行中取消、过期 lease token 拒绝写回、配置变化、超时和 SIGTERM 对应的中止路径。

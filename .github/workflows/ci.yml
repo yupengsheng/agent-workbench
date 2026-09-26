@@ -32,8 +32,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - name: Verify TAO loop and readonly tools
-        run: node --test tests/unit/tao-tools.test.mjs
+      - name: Verify TAO loop and tool policies
+        run: node --test tests/unit/tao-tools.test.mjs tests/unit/web-fetch.test.mjs
       - name: Verify chat persistence and ownership
         run: node --test tests/integration/chat-history.test.mjs
         env:
