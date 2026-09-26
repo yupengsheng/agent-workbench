@@ -19,6 +19,7 @@ import {
   getSessions,
 } from './lib/api';
 import ModelConnectionsPanel from './features/admin/ModelConnectionsPanel.vue';
+import ModelInvocationLogsPanel from './features/admin/ModelInvocationLogsPanel.vue';
 import AuditRecordsPanel from './features/admin/AuditRecordsPanel.vue';
 import ChatPanel from './features/user/ChatPanel.vue';
 import WorkbenchShell from './features/layout/WorkbenchShell.vue';
@@ -339,6 +340,11 @@ onMounted(async () => {
             :models="models"
             :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
             @changed="refreshAdminData"
+          />
+          <ModelInvocationLogsPanel
+            :workspace-id="selectedWorkspaceId"
+            :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
+            :refresh-key="auditRefreshKey"
           />
           <AuditRecordsPanel
             :workspace-id="selectedWorkspaceId"

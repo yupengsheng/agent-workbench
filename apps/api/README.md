@@ -16,7 +16,7 @@ M1 提供本地账号和 Workspace 基础接口：`POST /api/v1/auth/login`、`P
 
 启用管理后台录入密钥前，必须为 API 配置一个持久的 32 字节 `MODEL_SECRET_ENCRYPTION_KEY`（十六进制 64 字符或 Base64）。密钥丢失后，已保存的托管模型密钥无法解密；更换主密钥前需要完成密钥迁移方案。
 
-owner/admin 可通过 `GET /api/v1/workspaces/:workspaceId/audit-records?limit=50&offset=0` 查询管理审计。接口使用分页快照并对可能出现的 secret、token、password、credential 和 API key 字段脱敏；审计历史没有修改或删除接口。
+owner/admin 可通过 `GET /api/v1/workspaces/:workspaceId/audit-records?limit=50&offset=0` 查询管理审计；增加 `scope=model` 时只返回 Jev 路由和实际模型调用，用于管理端模型日志。接口使用稳定排序的偏移分页，并对可能出现的 secret、token、password、credential 和 API key 字段脱敏；审计历史没有修改或删除接口。
 
 Agent 配置按版本保存：`GET /api/v1/workspaces/:workspaceId/agents` 查询列表，`POST /api/v1/workspaces/:workspaceId/agents` 创建带 draft v1 的 Agent，`POST /api/v1/workspaces/:workspaceId/agents/:agentId/versions` 创建后续草稿，`POST /api/v1/workspaces/:workspaceId/agents/:agentId/versions/:versionId/publish` 发布版本。只有 owner/admin 可以写入；发布会归档原 published 版本并更新 Agent 当前版本。配置限制为最多 64 KiB 的 JSON 对象，拒绝 secret、token、password、credential 和 API key 字段，并校验 `modelConnectionId` 必须属于当前工作空间且处于 active 状态。
 

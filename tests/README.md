@@ -54,3 +54,5 @@ TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db \
 `web-fetch.test.mjs` 使用注入的 DNS 和传输响应验证网页策略，不依赖真实互联网。覆盖私网、环回、链路本地、元数据地址、IPv4 映射 IPv6、混合 DNS、跳转复检、HTTPS 降级、超时、取消、文本类型和工具默认关闭。
 
 Runner 回归还验证竞争领取一次、同 Session 并发返回 409、重复取消幂等、运行中取消、过期 lease token 拒绝写回、配置变化、超时和 SIGTERM 对应的中止路径。
+
+管理端审计浏览器回归同时覆盖模型日志范围查询、Jev 选择摘要、候选概率展开，以及原始提示内容不渲染。

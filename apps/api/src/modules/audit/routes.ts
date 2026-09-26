@@ -1,6 +1,6 @@
 import type { AuditRecordListResponse, AuditRecordSummary } from '@agent-workbench/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { DatabaseHandle } from '../../db/client.js';
 import { auditRecords } from '../../db/schema.js';
 import { getAuthenticatedUser } from '../identity/service.js';
@@ -13,6 +13,7 @@ interface Params {
 interface Querystring {
   limit?: string;
   offset?: string;
+  scope?: string;
 }
 
 function error(reply: FastifyReply, statusCode: number, code: string, message: string) {
@@ -58,20 +59,36 @@ export async function registerAuditRoutes(
 
       const limit = request.query.limit === undefined ? 50 : Number(request.query.limit);
       const offset = request.query.offset === undefined ? 0 : Number(request.query.offset);
+      const scope = request.query.scope ?? 'all';
       if (
         !Number.isInteger(limit) ||
         limit < 1 ||
         limit > 100 ||
         !Number.isInteger(offset) ||
-        offset < 0
+        offset < 0 ||
+        !['all', 'model'].includes(scope)
       ) {
-        return error(reply, 400, 'invalid_request', 'limit 必须为 1 到 100，offset 必须为非负整数');
+        return error(
+          reply,
+          400,
+          'invalid_request',
+          'limit 必须为 1 到 100，offset 必须为非负整数，scope 必须为 all 或 model',
+        );
       }
+
+      const workspaceCondition = eq(auditRecords.workspaceId, request.params.workspaceId);
+      const condition =
+        scope === 'model'
+          ? and(
+              workspaceCondition,
+              inArray(auditRecords.resourceType, ['model_routing', 'model_call']),
+            )
+          : workspaceCondition;
 
       const rows = await database.db
         .select()
         .from(auditRecords)
-        .where(eq(auditRecords.workspaceId, request.params.workspaceId))
+        .where(condition)
         .orderBy(desc(auditRecords.createdAt), desc(auditRecords.id))
         .limit(limit + 1)
         .offset(offset);

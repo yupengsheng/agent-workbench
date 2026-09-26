@@ -296,16 +296,27 @@ export const artifacts = pgTable(
   (table) => [uniqueIndex('artifacts_run_name_idx').on(table.runId, table.name)],
 );
 
-export const auditRecords = pgTable('audit_records', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'set null' }),
-  actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
-  action: text('action').notNull(),
-  resourceType: text('resource_type').notNull(),
-  resourceId: uuid('resource_id'),
-  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
-  ...auditTimestamps,
-});
+export const auditRecords = pgTable(
+  'audit_records',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'set null' }),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    action: text('action').notNull(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: uuid('resource_id'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    ...auditTimestamps,
+  },
+  (table) => [
+    index('audit_records_workspace_resource_created_at_idx').on(
+      table.workspaceId,
+      table.resourceType,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+  ],
+);
 
 export const fileChangeReviewStatus = pgEnum('file_change_review_status', [
   'pending',

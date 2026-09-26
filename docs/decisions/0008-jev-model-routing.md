@@ -14,6 +14,7 @@
 3. Runner 重新校验候选仍属于工作空间、处于 active 且快照未变化，然后使用 `@typesafe-ai/sdk` 的 `jev-latest` Choice 请求选择一个候选。
 4. Runner 只接受候选快照中的 ID，要求置信度达到 `TYPESAFE_ROUTER_MIN_CONFIDENCE`（默认 `0.65`），并在 fencing lease 下写入 `model.routed` 事件和实际 `runs.model_connection_id`。Jev 失败、返回未知候选或低置信度时不调用任何业务模型。
 5. TypeSafe API Key 只存在 Runner 环境变量 `TYPESAFE_API_KEY`，不写数据库、不写事件 payload、不返回浏览器。路由超时由 `TYPESAFE_ROUTER_TIMEOUT_MS` 控制，默认 5 秒。
+6. 每次 Jev 请求在审计表记录 started 和 completed/failed/cancelled 终态。成功记录候选、概率、选择、置信度和耗时；失败记录错误码和耗时。提示词、回复正文和 TypeSafe API Key 不进入审计。管理端通过模型范围分页查询独立展示 Jev 与下游模型调用。
 
 ## 取舍
 
@@ -24,3 +25,4 @@ Jev 能把自然语言请求和候选能力转成结构化 Choice，并提供概
 - 契约测试覆盖固定模式兼容、Jev 无固定模型、重复候选拒绝。
 - Runtime 单测使用注入 fetch 验证 `jev-latest` Choice、概率解析和未知候选拒绝。
 - Runner 路径在运行时重新检查候选连接配置，防止入队后管理员修改模型导致越权或调用旧配置。
+- PostgreSQL 集成测试验证路由生命周期、模型范围查询及敏感输入不进入审计；浏览器测试验证候选概率和模型请求摘要。

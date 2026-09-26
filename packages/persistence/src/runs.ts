@@ -32,6 +32,7 @@ type ModelCallAuditInput =
       provider: string;
       model: string;
       finishReason: string | null;
+      durationMs: number;
       usage: {
         promptTokens?: number;
         completionTokens?: number;
@@ -44,7 +45,16 @@ type ModelCallAuditInput =
       provider: string;
       model: string;
       errorCode: string;
+      durationMs: number;
     };
+type ModelRoutingAuditInput = {
+  phase: 'started' | 'failed' | 'cancelled';
+  router: string;
+  routerModel: string;
+  candidates: unknown[];
+  errorCode?: string;
+  durationMs?: number;
+};
 export type ClaimedRun = RunRow & { leaseToken: string; deadlineAt: Date };
 export const LEASE_SECONDS = 30;
 export const RUN_TIMEOUT_MS = 60_000;
@@ -376,6 +386,12 @@ function safeMetadataString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value.slice(0, 256) : undefined;
 }
 
+function safeDuration(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : undefined;
+}
+
 function safeModelRoutePayload(payload: Record<string, unknown>) {
   const candidates = Array.isArray(payload.candidates)
     ? payload.candidates.flatMap((candidate) => {
@@ -410,6 +426,7 @@ function safeModelRoutePayload(payload: Record<string, unknown>) {
       typeof payload.confidence === 'number' && Number.isFinite(payload.confidence)
         ? payload.confidence
         : undefined,
+    durationMs: safeDuration(payload.durationMs),
     probabilities,
     candidates,
   };
@@ -456,6 +473,33 @@ export async function recordModelRoute(
   });
 }
 
+/** Record a Jev request edge without retaining the routed prompt. */
+export async function recordModelRoutingAudit(
+  database: DatabaseHandle,
+  runId: string,
+  token: string,
+  input: ModelRoutingAuditInput,
+) {
+  return database.db.transaction(async (tx) => {
+    const [run] = await tx.select().from(runs).where(validLease(runId, token)).for('update');
+    if (!run) return false;
+    const safePayload = safeModelRoutePayload(input);
+    await tx.insert(auditRecords).values({
+      workspaceId: run.workspaceId,
+      actorUserId: run.triggerUserId,
+      action: `model_routing.${input.phase}`,
+      resourceType: 'model_routing',
+      resourceId: run.id,
+      metadata: {
+        runId,
+        ...safePayload,
+        ...(input.errorCode ? { errorCode: safeMetadataString(input.errorCode) } : {}),
+      },
+    });
+    return true;
+  });
+}
+
 /** Record one model request lifecycle edge without retaining prompts or model output. */
 export async function recordModelCallAudit(
   database: DatabaseHandle,
@@ -487,10 +531,17 @@ export async function recordModelCallAudit(
         provider: safeMetadataString(input.provider),
         model: safeMetadataString(input.model),
         ...(input.phase === 'completed'
-          ? { finishReason: safeMetadataString(input.finishReason), usage }
+          ? {
+              finishReason: safeMetadataString(input.finishReason),
+              durationMs: safeDuration(input.durationMs),
+              usage,
+            }
           : {}),
         ...(input.phase === 'failed' || input.phase === 'cancelled'
-          ? { errorCode: safeMetadataString(input.errorCode) }
+          ? {
+              errorCode: safeMetadataString(input.errorCode),
+              durationMs: safeDuration(input.durationMs),
+            }
           : {}),
       },
     });

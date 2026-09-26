@@ -3,6 +3,7 @@ import {
   claimRun,
   finishRun,
   recordModelRoute,
+  recordModelRoutingAudit,
   renewLease,
   requestRunCancellation,
   recoverExpiredRuns,
@@ -322,6 +323,7 @@ test(
             auditRows.map((row) => row.action),
             ['model_call.started', 'model_call.failed'],
           );
+          assert.equal(typeof auditRows[1].metadata.durationMs, 'number');
           assert(!JSON.stringify(auditRows).includes(secret));
           assert.equal((await request('GET', `${base}/sessions`)).json().sessions.length, 1);
         },
@@ -365,9 +367,25 @@ test(
           assert(!('arguments' in row.metadata));
           assert(!('content' in row.metadata));
         }
+        for (const row of auditRows.filter((item) => item.action === 'model_call.completed')) {
+          assert.equal(typeof row.metadata.durationMs, 'number');
+        }
         const response = await request('GET', `${base}/audit-records?limit=100&offset=0`);
         assert.equal(response.statusCode, 200);
         assert(response.json().records.some((record) => record.metadata.runId === accepted.runId));
+        const modelResponse = await request(
+          'GET',
+          `${base}/audit-records?limit=100&offset=0&scope=model`,
+        );
+        assert.equal(modelResponse.statusCode, 200);
+        assert(
+          modelResponse
+            .json()
+            .records.every((record) =>
+              ['model_call', 'model_routing'].includes(record.resourceType),
+            ),
+        );
+        assert.equal((await request('GET', `${base}/audit-records?scope=unknown`)).statusCode, 400);
         assert.equal(
           (await request('GET', `${base}/audit-records`, undefined, otherCookie)).statusCode,
           403,
@@ -389,6 +407,15 @@ test(
         const accepted = await submit('route audit');
         const claimed = await claimRun(database, randomUUID());
         assert.equal(
+          await recordModelRoutingAudit(database, claimed.id, claimed.leaseToken, {
+            phase: 'started',
+            router: 'jev',
+            routerModel: 'jev-latest',
+            candidates: [{ id: modelId, provider: 'deepseek', model: 'fixture-model' }],
+          }),
+          true,
+        );
+        assert.equal(
           await recordModelRoute(database, claimed.id, claimed.leaseToken, modelId, {
             router: 'jev',
             routerModel: 'jev-latest',
@@ -396,6 +423,7 @@ test(
             confidence: 0.92,
             probabilities: { [modelId]: 0.92 },
             candidates: [{ id: modelId, provider: 'deepseek', model: 'fixture-model' }],
+            durationMs: 37,
             prompt: routePromptMarker,
           }),
           true,
@@ -403,17 +431,55 @@ test(
         await finishRun(database, claimed.id, claimed.leaseToken, { status: 'cancelled' });
         const auditRows = (
           await database.pool.query(
-            "SELECT action,metadata FROM audit_records WHERE action='model_routing.completed' AND metadata->>'runId'=$1",
+            "SELECT action,metadata FROM audit_records WHERE resource_type='model_routing' AND metadata->>'runId'=$1 ORDER BY created_at,id",
             [accepted.runId],
           )
         ).rows;
-        assert.equal(auditRows.length, 1);
-        assert.equal(auditRows[0].metadata.router, 'jev');
+        assert.deepEqual(
+          auditRows.map((row) => row.action),
+          ['model_routing.started', 'model_routing.completed'],
+        );
+        assert.equal(auditRows[1].metadata.router, 'jev');
+        assert.equal(auditRows[1].metadata.durationMs, 37);
         assert(!JSON.stringify(auditRows).includes(routePromptMarker));
         const runDetail = await detail(accepted.runId);
         const routed = runDetail.events.find((event) => event.type === 'model.routed');
         assert(routed);
         assert(!JSON.stringify(routed).includes(routePromptMarker));
+
+        const failedAccepted = await submit('route audit failure');
+        const failedClaim = await claimRun(database, randomUUID());
+        assert.equal(
+          await recordModelRoutingAudit(database, failedClaim.id, failedClaim.leaseToken, {
+            phase: 'started',
+            router: 'jev',
+            routerModel: 'jev-latest',
+            candidates: [{ id: modelId, provider: 'deepseek', model: 'fixture-model' }],
+          }),
+          true,
+        );
+        assert.equal(
+          await recordModelRoutingAudit(database, failedClaim.id, failedClaim.leaseToken, {
+            phase: 'failed',
+            router: 'jev',
+            routerModel: 'jev-latest',
+            candidates: [{ id: modelId, provider: 'deepseek', model: 'fixture-model' }],
+            errorCode: 'router_unavailable',
+            durationMs: 5000,
+            prompt: routePromptMarker,
+          }),
+          true,
+        );
+        await finishRun(database, failedClaim.id, failedClaim.leaseToken, { status: 'cancelled' });
+        const [failedAudit] = (
+          await database.pool.query(
+            "SELECT metadata FROM audit_records WHERE action='model_routing.failed' AND metadata->>'runId'=$1",
+            [failedAccepted.runId],
+          )
+        ).rows;
+        assert.equal(failedAudit.metadata.errorCode, 'router_unavailable');
+        assert.equal(failedAudit.metadata.durationMs, 5000);
+        assert(!JSON.stringify(failedAudit).includes(routePromptMarker));
       });
 
       await t.test(

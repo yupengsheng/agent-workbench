@@ -35,6 +35,7 @@ import {
   finishToolStep,
   recordModelCallAudit,
   recordModelRoute,
+  recordModelRoutingAudit,
   startToolStep,
   type ClaimedRun,
 } from '@agent-workbench/persistence/runs';
@@ -314,37 +315,74 @@ export async function executeRun(
           throw new ModelRouterError('router_no_candidate', 'Jev 候选模型配置已变更，请重新提交');
         }
       }
-      const router = new TypeSafeJevModelRouter({
-        ...(process.env.TYPESAFE_API_KEY ? { apiKey: process.env.TYPESAFE_API_KEY } : {}),
-        timeoutMs: Number(process.env.TYPESAFE_ROUTER_TIMEOUT_MS ?? 5000),
+      const routeCandidates = snapshots.map((candidate) => ({
+        id: candidate.id,
+        provider: candidate.provider,
+        model: candidate.model,
+      }));
+      const routeStartedAt = Date.now();
+      const routeStarted = await recordModelRoutingAudit(database, run.id, run.leaseToken, {
+        phase: 'started',
+        router: 'jev',
+        routerModel: 'jev-latest',
+        candidates: routeCandidates,
       });
-      routeDecision = await router.choose(
-        input.messages
-          .map((message) => `${message.role}: ${message.content}`)
-          .slice(-8)
-          .join('\n'),
-        snapshots.map((candidate) => ({
-          id: candidate.id,
-          provider: candidate.provider,
-          model: candidate.model,
-          capabilities: candidate.capabilities,
-        })),
-        controller.signal,
-      );
-      const minimumConfidence = Number(process.env.TYPESAFE_ROUTER_MIN_CONFIDENCE ?? 0.65);
-      if (!Number.isFinite(minimumConfidence) || routeDecision.confidence < minimumConfidence) {
-        throw new ModelRouterError(
-          'router_low_confidence',
-          `Jev 对模型选择的置信度不足（${routeDecision.confidence.toFixed(2)}），请手动选择模型重试`,
+      if (!routeStarted) {
+        stop('lease_lost');
+        throw new Error('runner lease lost while starting model route audit');
+      }
+      try {
+        const router = new TypeSafeJevModelRouter({
+          ...(process.env.TYPESAFE_API_KEY ? { apiKey: process.env.TYPESAFE_API_KEY } : {}),
+          timeoutMs: Number(process.env.TYPESAFE_ROUTER_TIMEOUT_MS ?? 5000),
+        });
+        routeDecision = await router.choose(
+          input.messages
+            .map((message) => `${message.role}: ${message.content}`)
+            .slice(-8)
+            .join('\n'),
+          snapshots.map((candidate) => ({
+            id: candidate.id,
+            provider: candidate.provider,
+            model: candidate.model,
+            capabilities: candidate.capabilities,
+          })),
+          controller.signal,
         );
-      }
-      selectedModelConnectionId = routeDecision.selectedId;
-      if (!selectedModelConnectionId) {
-        throw new ModelRouterError('router_no_candidate', 'Jev 没有选择可用模型');
-      }
-      selectedSnapshot = snapshots.find((candidate) => candidate.id === selectedModelConnectionId);
-      if (!selectedSnapshot) {
-        throw new ModelRouterError('router_no_candidate', 'Jev 选择了未授权的模型');
+        const minimumConfidence = Number(process.env.TYPESAFE_ROUTER_MIN_CONFIDENCE ?? 0.65);
+        if (!Number.isFinite(minimumConfidence) || routeDecision.confidence < minimumConfidence) {
+          throw new ModelRouterError(
+            'router_low_confidence',
+            `Jev 对模型选择的置信度不足（${routeDecision.confidence.toFixed(2)}），请手动选择模型重试`,
+          );
+        }
+        selectedModelConnectionId = routeDecision.selectedId;
+        if (!selectedModelConnectionId) {
+          throw new ModelRouterError('router_no_candidate', 'Jev 没有选择可用模型');
+        }
+        selectedSnapshot = snapshots.find(
+          (candidate) => candidate.id === selectedModelConnectionId,
+        );
+        if (!selectedSnapshot) {
+          throw new ModelRouterError('router_no_candidate', 'Jev 选择了未授权的模型');
+        }
+      } catch (error) {
+        const cancelled = controller.signal.aborted;
+        const routeFailed = await recordModelRoutingAudit(database, run.id, run.leaseToken, {
+          phase: cancelled ? 'cancelled' : 'failed',
+          router: 'jev',
+          routerModel: 'jev-latest',
+          candidates: routeCandidates,
+          errorCode:
+            cancelled && stopReason
+              ? stopReason
+              : error instanceof ModelRouterError
+                ? error.code
+                : 'router_unavailable',
+          durationMs: Date.now() - routeStartedAt,
+        });
+        if (!routeFailed) stop('lease_lost');
+        throw error;
       }
       const recorded = await recordModelRoute(
         database,
@@ -356,12 +394,9 @@ export async function executeRun(
           routerModel: routeDecision.routerModel,
           selectedCandidateId: selectedModelConnectionId,
           confidence: routeDecision.confidence,
+          durationMs: Date.now() - routeStartedAt,
           probabilities: routeDecision.probabilities,
-          candidates: snapshots.map((candidate) => ({
-            id: candidate.id,
-            provider: candidate.provider,
-            model: candidate.model,
-          })),
+          candidates: routeCandidates,
         },
       );
       if (!recorded) {
@@ -444,6 +479,7 @@ export async function executeRun(
     });
     const toolDefinitions =
       connection.capabilities.tools === true ? toolRegistry.definitions() : [];
+    const modelCallStartedAt = new Map<number, number>();
     const result = await executeAgentLoop(
       client,
       input.messages.map((message) => ({ role: message.role, content: message.content })),
@@ -538,22 +574,32 @@ export async function executeRun(
               phase: 'started',
               ...identity,
             });
+            if (recorded) modelCallStartedAt.set(event.round, Date.now());
           } else if (event.type === 'model.completed' && event.response) {
             recorded = await recordModelCallAudit(database, run.id, run.leaseToken, {
               phase: 'completed',
               ...identity,
               finishReason: event.response.finishReason,
+              durationMs: Math.max(
+                0,
+                Date.now() - (modelCallStartedAt.get(event.round) ?? Date.now()),
+              ),
               usage: event.response.usage,
             });
           } else {
             recorded = await recordModelCallAudit(database, run.id, run.leaseToken, {
               phase: controller.signal.aborted ? 'cancelled' : 'failed',
               ...identity,
+              durationMs: Math.max(
+                0,
+                Date.now() - (modelCallStartedAt.get(event.round) ?? Date.now()),
+              ),
               errorCode: controller.signal.aborted
                 ? (stopReason ?? 'cancelled')
                 : 'model_request_failed',
             });
           }
+          if (event.type !== 'model.started') modelCallStartedAt.delete(event.round);
           if (!recorded) {
             stop('lease_lost');
             throw new Error('runner lease lost while recording model call audit');

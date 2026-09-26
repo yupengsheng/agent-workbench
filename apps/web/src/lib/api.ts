@@ -131,8 +131,9 @@ export function getAuditRecords(
   workspaceId: string,
   limit = 30,
   offset = 0,
+  scope: 'all' | 'model' = 'all',
 ): Promise<AuditRecordListResponse> {
-  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset), scope });
   return readJson<AuditRecordListResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/audit-records?${query}`,
   );
