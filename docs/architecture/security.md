@@ -1,6 +1,6 @@
 # 安全、权限与执行边界
 
-状态：身份、Workspace membership、模型配置隔离、结构化审计、受控文件/Shell、网页获取和 Shell cgroup 隔离已实现；身份集成仍按路线建设。cgroup 部署验收尚未完成。
+状态：身份、Workspace membership、模型配置隔离、结构化审计、受控文件/Shell、网页获取和 Shell cgroup 隔离已实现；身份集成仍按路线建设。Shell cgroup 已在测试环境的 cgroup v1/systemd 239 上验收。
 
 ## 有效权限
 

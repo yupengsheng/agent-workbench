@@ -1,6 +1,6 @@
 # ADR-0012：Shell 只在非特权沙箱中显式启用
 
-- 状态：已实现，待测试环境 cgroup 验收
+- 状态：已实现并通过测试环境验收
 - 日期：2026-09-26
 
 ## 背景
@@ -21,4 +21,4 @@
 
 - 单元测试验证审批前不执行、缺少 bubblewrap 时不降级、UID 65532、工作区写入、取消、输出上限、cgroup 缺失时 fail closed，以及执行前/执行后工作区配额。
 - PostgreSQL 集成测试覆盖摘要校验、幂等批准、一次性执行、资源用量回显、崩溃恢复为 `unknown`，以及审计不包含命令文本。
-- 测试环境还需验证 transient service 的 cgroup accounting 与资源峰值；完成前不将路线图项目标为完成。
+- 2026-09-26 在测试 ECS 的 cgroup v1/systemd 239 上验证 transient service：成功命令记录 CPU、内存峰值和进程峰值；1 CPU 秒预算返回 `cpu_limit`，1 KiB 工作区配额返回 `disk_limit`。测试环境发布配置使用 `required`，隔离不可用时不会执行命令。
