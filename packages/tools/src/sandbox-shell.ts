@@ -136,7 +136,6 @@ export async function executeSandboxedShell(
   const memoryKb = Math.max(1, Math.ceil(memoryBytes / 1024));
   const mount: string[] = [
     '--die-with-parent',
-    '--new-session',
     '--unshare-all',
     '--uid',
     '65532',
@@ -200,6 +199,8 @@ export async function executeSandboxedShell(
   ];
   const startedAt = Date.now();
   return new Promise((resolve) => {
+    // detached creates the host process group used for cancellation and budget
+    // enforcement. Passing bwrap --new-session would let COMMAND leave it.
     const child = spawn(bubblewrap, args, {
       cwd: '/',
       detached: true,
