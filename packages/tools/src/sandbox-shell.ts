@@ -1,7 +1,20 @@
-import { access, realpath } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
+import { access, lstat, readdir, realpath } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { relative, resolve, sep } from 'node:path';
+import {
+  DEFAULT_SHELL_WORKSPACE_BYTES,
+  MAX_SHELL_WORKSPACE_BYTES,
+  type ShellCommandResourceUsage,
+} from '@agent-workbench/contracts';
+import {
+  killProcessGroup,
+  killSystemdCgroup,
+  resetSystemdCgroup,
+  sampleSystemdCgroup,
+  systemdCgroupCommand,
+  type CgroupMode,
+} from './systemd-cgroup.js';
 
 export interface SandboxShellOptions {
   /** Absolute path to bubblewrap. The default is intentionally fixed and fail-closed. */
@@ -11,6 +24,10 @@ export interface SandboxShellOptions {
   memoryBytes?: number;
   maxProcesses?: number;
   maxOutputBytes?: number;
+  workspaceQuotaBytes?: number;
+  cgroupMode?: CgroupMode;
+  systemdRunPath?: string;
+  systemctlPath?: string;
 }
 
 export interface SandboxShellResult {
@@ -21,7 +38,13 @@ export interface SandboxShellResult {
   stderr: string;
   truncated: boolean;
   durationMs: number;
+  resourceUsage?: ShellCommandResourceUsage;
   errorCode?: string;
+}
+
+interface WorkspaceUsage {
+  bytes: number;
+  files: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -31,6 +54,9 @@ const DEFAULT_MEMORY_BYTES = 512 * 1024 * 1024;
 const DEFAULT_MAX_PROCESSES = 64;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_COMMAND_LENGTH = 4_096;
+const MAX_QUOTA_SCAN_ENTRIES = 200_000;
+const RESOURCE_SAMPLE_MS = 100;
+const WORKSPACE_SAMPLE_MS = 250;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function positiveInteger(value: number | undefined, fallback: number, maximum: number): number {
@@ -62,22 +88,67 @@ async function findBubblewrap(path?: string): Promise<string | undefined> {
   }
 }
 
-function killGroup(child: ReturnType<typeof spawn>, signal: NodeJS.Signals = 'SIGKILL') {
-  if (!child.pid) return;
-  try {
-    process.kill(-child.pid, signal);
-  } catch {
+async function workspaceUsage(root: string, stopAfterBytes?: number): Promise<WorkspaceUsage> {
+  const stack = [root];
+  const hardLinks = new Set<string>();
+  let bytes = 0;
+  let files = 0;
+  let visited = 0;
+  while (stack.length > 0) {
+    const directory = stack.pop()!;
+    let entries;
     try {
-      child.kill(signal);
-    } catch {
-      // The process may already have exited.
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    for (const entry of entries) {
+      visited += 1;
+      if (visited > MAX_QUOTA_SCAN_ENTRIES) throw new Error('workspace_scan_limit');
+      const path = resolve(directory, entry.name);
+      let stats;
+      try {
+        stats = await lstat(path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+      if (stats.isDirectory()) {
+        stack.push(path);
+        continue;
+      }
+      const inode = `${stats.dev}:${stats.ino}`;
+      if (stats.nlink > 1 && hardLinks.has(inode)) continue;
+      if (stats.nlink > 1) hardLinks.add(inode);
+      files += 1;
+      bytes += stats.size;
+      if (stopAfterBytes !== undefined && bytes > stopAfterBytes) return { bytes, files };
     }
   }
+  return { bytes, files };
+}
+
+function baseResult(
+  status: SandboxShellResult['status'],
+  errorCode: string,
+  stderr: string,
+): SandboxShellResult {
+  return {
+    status,
+    exitCode: null,
+    signal: status === 'cancelled' ? 'SIGTERM' : null,
+    stdout: '',
+    stderr,
+    truncated: false,
+    durationMs: 0,
+    errorCode,
+  };
 }
 
 /**
- * Run an explicit shell command inside bubblewrap. This function deliberately
- * refuses to fall back to the host shell: a missing sandbox is a policy error.
+ * Run an explicit shell command inside bubblewrap. Production callers can
+ * require a transient systemd cgroup; unavailable isolation fails closed.
  */
 export async function executeSandboxedShell(
   workspace: string,
@@ -86,42 +157,16 @@ export async function executeSandboxedShell(
   signal?: AbortSignal,
 ): Promise<SandboxShellResult> {
   const invalid = commandInput(command);
-  if (invalid) {
-    return {
-      status: 'error',
-      exitCode: null,
-      signal: null,
-      stdout: '',
-      stderr: invalid,
-      truncated: false,
-      durationMs: 0,
-      errorCode: 'invalid_command',
-    };
-  }
-  if (signal?.aborted) {
-    return {
-      status: 'cancelled',
-      exitCode: null,
-      signal: 'SIGTERM',
-      stdout: '',
-      stderr: '命令执行已取消',
-      truncated: false,
-      durationMs: 0,
-      errorCode: 'cancelled',
-    };
-  }
+  if (invalid) return baseResult('error', 'invalid_command', invalid);
+  if (signal?.aborted) return baseResult('cancelled', 'cancelled', '命令执行已取消');
+
   const bubblewrap = await findBubblewrap(options.bubblewrapPath);
   if (!bubblewrap) {
-    return {
-      status: 'error',
-      exitCode: null,
-      signal: null,
-      stdout: '',
-      stderr: '未找到 bubblewrap，已拒绝在主机 Shell 中执行',
-      truncated: false,
-      durationMs: 0,
-      errorCode: 'sandbox_unavailable',
-    };
+    return baseResult(
+      'error',
+      'sandbox_unavailable',
+      '未找到 bubblewrap，已拒绝在主机 Shell 中执行',
+    );
   }
 
   const timeoutMs = positiveInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
@@ -133,7 +178,37 @@ export async function executeSandboxedShell(
     DEFAULT_MAX_OUTPUT_BYTES,
     512 * 1024,
   );
+  const workspaceQuotaBytes = positiveInteger(
+    options.workspaceQuotaBytes,
+    DEFAULT_SHELL_WORKSPACE_BYTES,
+    MAX_SHELL_WORKSPACE_BYTES,
+  );
+  let before: WorkspaceUsage;
+  try {
+    before = await workspaceUsage(workspace, workspaceQuotaBytes);
+  } catch {
+    return baseResult('error', 'workspace_quota_unavailable', '无法核对工作区磁盘用量，命令未执行');
+  }
+  if (before.bytes > workspaceQuotaBytes) {
+    const result = baseResult(
+      'error',
+      'workspace_quota_exceeded',
+      '工作区已超过磁盘配额，命令未执行',
+    );
+    result.resourceUsage = {
+      cgroupEnforced: false,
+      cpuUsec: 0,
+      memoryPeakBytes: 0,
+      processPeak: 0,
+      workspaceBytesBefore: before.bytes,
+      workspaceBytesAfter: before.bytes,
+      workspaceQuotaBytes,
+    };
+    return result;
+  }
+
   const memoryKb = Math.max(1, Math.ceil(memoryBytes / 1024));
+  const diskBlocks = Math.max(1, Math.floor(workspaceQuotaBytes / 512));
   const mount: string[] = [
     '--die-with-parent',
     '--unshare-all',
@@ -152,6 +227,7 @@ export async function executeSandboxedShell(
     '/workspace',
     '--chdir',
     '/workspace',
+    '--clearenv',
     '--setenv',
     'HOME',
     '/tmp',
@@ -178,14 +254,15 @@ export async function executeSandboxedShell(
     mount.push('--ro-bind', '/dev/null', path);
   }
 
-  // ulimit is applied inside the user namespace and therefore remains a
-  // defense in depth if a child process ignores the wall-clock timer.
+  // ulimit remains defense in depth inside the namespace. Aggregate CPU,
+  // memory, and process limits are enforced by the outer cgroup when required.
   const bootstrap =
     'ulimit -t "$1" 2>/dev/null || true; ' +
     'ulimit -v "$2" 2>/dev/null || true; ' +
     'ulimit -u "$3" 2>/dev/null || true; ' +
-    'exec /bin/sh -c "$4"';
-  const args = [
+    'ulimit -f "$4" 2>/dev/null || exit 124; ' +
+    'exec /bin/sh -c "$5"';
+  const bubblewrapArgs = [
     ...mount,
     '--',
     '/bin/sh',
@@ -195,13 +272,36 @@ export async function executeSandboxedShell(
     String(cpuSeconds),
     String(memoryKb),
     String(maxProcesses),
+    String(diskBlocks),
     command,
   ];
+
+  let cgroup;
+  try {
+    cgroup = await systemdCgroupCommand(bubblewrap, bubblewrapArgs, {
+      mode: options.cgroupMode ?? 'disabled',
+      memoryBytes,
+      maxProcesses,
+      ...(options.systemdRunPath ? { systemdRunPath: options.systemdRunPath } : {}),
+      ...(options.systemctlPath ? { systemctlPath: options.systemctlPath } : {}),
+    });
+  } catch {
+    const result = baseResult('error', 'cgroup_unavailable', '无法建立必需的 cgroup，命令未执行');
+    result.resourceUsage = {
+      cgroupEnforced: false,
+      cpuUsec: 0,
+      memoryPeakBytes: 0,
+      processPeak: 0,
+      workspaceBytesBefore: before.bytes,
+      workspaceBytesAfter: before.bytes,
+      workspaceQuotaBytes,
+    };
+    return result;
+  }
+
   const startedAt = Date.now();
-  return new Promise((resolve) => {
-    // detached creates the host process group used for cancellation and budget
-    // enforcement. Passing bwrap --new-session would let COMMAND leave it.
-    const child = spawn(bubblewrap, args, {
+  return new Promise((resolveResult) => {
+    const child = spawn(cgroup?.executable ?? bubblewrap, cgroup?.args ?? bubblewrapArgs, {
       cwd: '/',
       detached: true,
       env: {
@@ -216,7 +316,23 @@ export async function executeSandboxedShell(
     let truncated = false;
     let timedOut = false;
     let cancelled = false;
+    let cpuExceeded = false;
+    let diskExceeded = false;
+    let quotaUnavailable = false;
     let settled = false;
+    let cpuUsec = 0;
+    let memoryPeakBytes = 0;
+    let processPeak = 0;
+    let memoryLimitHit = false;
+    let workspaceBytesAfter = before.bytes;
+    let resourceTimer: ReturnType<typeof setTimeout> | undefined;
+    let workspaceTimer: ReturnType<typeof setTimeout> | undefined;
+    let workspaceCheck: Promise<void> | undefined;
+
+    const terminate = (terminationSignal: NodeJS.Signals = 'SIGKILL') => {
+      if (cgroup) killSystemdCgroup(cgroup.systemctlPath, cgroup.unitName, terminationSignal);
+      killProcessGroup(child, terminationSignal);
+    };
     const append = (target: 'stdout' | 'stderr', chunk: Buffer) => {
       if (settled) return;
       const remaining = maxOutputBytes - outputBytes;
@@ -226,68 +342,145 @@ export async function executeSandboxedShell(
       outputBytes += Math.min(chunk.byteLength, Math.max(0, remaining));
       if (chunk.byteLength > remaining) {
         truncated = true;
-        killGroup(child);
+        terminate();
       }
     };
     child.stdout.on('data', (chunk: Buffer) => append('stdout', chunk));
     child.stderr.on('data', (chunk: Buffer) => append('stderr', chunk));
+
+    const recordResourceSample = async () => {
+      if (!cgroup) return;
+      const sample = await sampleSystemdCgroup(cgroup.systemctlPath, cgroup.unitName);
+      if (sample) {
+        cpuUsec = Math.max(cpuUsec, sample.cpuUsec);
+        memoryPeakBytes = Math.max(memoryPeakBytes, sample.memoryPeakBytes);
+        processPeak = Math.max(processPeak, sample.processes);
+        memoryLimitHit ||= sample.memoryLimitHit;
+        if (sample.cpuUsec >= cpuSeconds * 1_000_000) {
+          cpuExceeded = true;
+          terminate();
+        }
+      }
+    };
+    const sampleResources = async () => {
+      if (settled || !cgroup) return;
+      await recordResourceSample();
+      if (!settled) resourceTimer = setTimeout(() => void sampleResources(), RESOURCE_SAMPLE_MS);
+    };
+    if (cgroup) void sampleResources();
+
+    const sampleWorkspace = async () => {
+      if (settled) return;
+      workspaceCheck = (async () => {
+        try {
+          const usage = await workspaceUsage(workspace, workspaceQuotaBytes);
+          workspaceBytesAfter = usage.bytes;
+          if (usage.bytes > workspaceQuotaBytes) {
+            diskExceeded = true;
+            terminate();
+          }
+        } catch {
+          quotaUnavailable = true;
+          terminate();
+        }
+      })();
+      await workspaceCheck;
+      workspaceCheck = undefined;
+      if (!settled && !diskExceeded && !quotaUnavailable) {
+        workspaceTimer = setTimeout(() => void sampleWorkspace(), WORKSPACE_SAMPLE_MS);
+      }
+    };
+    workspaceTimer = setTimeout(() => void sampleWorkspace(), WORKSPACE_SAMPLE_MS);
+
     const timer = setTimeout(() => {
       timedOut = true;
-      killGroup(child);
+      terminate();
     }, timeoutMs);
     const onAbort = () => {
       cancelled = true;
-      killGroup(child, 'SIGTERM');
-      setTimeout(() => killGroup(child), 500).unref();
+      terminate('SIGTERM');
+      setTimeout(() => terminate(), 500).unref();
     };
     signal?.addEventListener('abort', onAbort, { once: true });
-    const finish = (errorCode?: string) => {
+
+    const finish = async (
+      exitCode: number | null,
+      signalName: string | null,
+      spawnFailed = false,
+    ) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (resourceTimer) clearTimeout(resourceTimer);
+      if (workspaceTimer) clearTimeout(workspaceTimer);
       signal?.removeEventListener('abort', onAbort);
+      await workspaceCheck?.catch(() => {});
+      await recordResourceSample();
+      try {
+        workspaceBytesAfter = (await workspaceUsage(workspace, workspaceQuotaBytes)).bytes;
+        if (workspaceBytesAfter > workspaceQuotaBytes) diskExceeded = true;
+      } catch {
+        quotaUnavailable = true;
+      }
+      if (cgroup) resetSystemdCgroup(cgroup.systemctlPath, cgroup.unitName);
       const durationMs = Date.now() - startedAt;
-      const status = cancelled ? 'cancelled' : 'error';
-      resolve({
-        status,
-        exitCode: child.exitCode,
-        signal: null,
-        stdout,
-        stderr,
-        truncated,
-        durationMs,
-        errorCode: errorCode ?? (cancelled ? 'cancelled' : timedOut ? 'timeout' : 'spawn_failed'),
-      });
-    };
-    child.once('error', (error) => {
-      stderr += error.message;
-      finish('spawn_failed');
-    });
-    child.once('close', (exitCode, signalName) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-      const durationMs = Date.now() - startedAt;
+      const cgroupStartupFailed =
+        Boolean(cgroup) &&
+        /Failed to (?:start transient|connect to bus)|Access denied|Interactive authentication required|Unknown assignment/i.test(
+          stderr,
+        );
+      const memoryExceeded =
+        Boolean(cgroup) &&
+        (memoryLimitHit || (exitCode === 137 && memoryPeakBytes >= Math.floor(memoryBytes * 0.9)));
+      const fileLimitExceeded = signalName === 'SIGXFSZ' || exitCode === 153;
       const errorCode = cancelled
         ? 'cancelled'
         : timedOut
           ? 'timeout'
-          : truncated
-            ? 'output_limit'
-            : exitCode === 0
-              ? undefined
-              : 'exit_nonzero';
-      resolve({
-        status: cancelled || exitCode !== 0 ? (cancelled ? 'cancelled' : 'error') : 'success',
+          : cpuExceeded
+            ? 'cpu_limit'
+            : diskExceeded || fileLimitExceeded
+              ? 'disk_limit'
+              : quotaUnavailable
+                ? 'workspace_quota_unavailable'
+                : truncated
+                  ? 'output_limit'
+                  : cgroupStartupFailed
+                    ? 'cgroup_unavailable'
+                    : memoryExceeded
+                      ? 'memory_limit'
+                      : spawnFailed
+                        ? 'spawn_failed'
+                        : exitCode === 0
+                          ? undefined
+                          : 'exit_nonzero';
+      resolveResult({
+        status: cancelled ? 'cancelled' : errorCode ? 'error' : 'success',
         exitCode,
         signal: signalName,
         stdout,
         stderr,
         truncated,
         durationMs,
+        resourceUsage: {
+          cgroupEnforced: Boolean(cgroup) && !cgroupStartupFailed,
+          cpuUsec,
+          memoryPeakBytes,
+          processPeak,
+          workspaceBytesBefore: before.bytes,
+          workspaceBytesAfter,
+          workspaceQuotaBytes,
+        },
         ...(errorCode ? { errorCode } : {}),
       });
+    };
+
+    child.once('error', (error) => {
+      stderr += error.message;
+      void finish(child.exitCode, null, true);
+    });
+    child.once('close', (exitCode, signalName) => {
+      void finish(exitCode, signalName);
     });
   });
 }
@@ -298,6 +491,7 @@ export const sandboxDefaults = {
   memoryBytes: DEFAULT_MEMORY_BYTES,
   maxProcesses: DEFAULT_MAX_PROCESSES,
   maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
+  workspaceBytes: DEFAULT_SHELL_WORKSPACE_BYTES,
   maxCommandLength: MAX_COMMAND_LENGTH,
 } as const;
 

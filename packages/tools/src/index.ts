@@ -26,7 +26,7 @@ export interface ToolContext {
 
 export interface ToolRegistryOptions {
   /** Shell proposals are opt-in; they never execute in the model loop. */
-  shell?: { enabled?: boolean };
+  shell?: { enabled?: boolean; workspaceQuotaBytes?: number };
   /** Web access requires a deployment allowlist and an explicit model capability. */
   web?: {
     enabled?: boolean;
@@ -334,7 +334,13 @@ export class ReadOnlyToolRegistry {
       this.createWorkspaceAnalysisTool(),
       this.createFileChangeProposalTool(),
     ];
-    if (options.shell?.enabled === true) this.tools.push(this.createShellCommandProposalTool());
+    if (options.shell?.enabled === true) {
+      this.tools.push(
+        this.createShellCommandProposalTool(
+          options.shell.workspaceQuotaBytes ?? sandboxDefaults.workspaceBytes,
+        ),
+      );
+    }
     if (options.web?.enabled === true) {
       const fetcher =
         options.web.fetcher ??
@@ -402,7 +408,7 @@ export class ReadOnlyToolRegistry {
     };
   }
 
-  private createShellCommandProposalTool(): ReadOnlyTool {
+  private createShellCommandProposalTool(workspaceQuotaBytes: number): ReadOnlyTool {
     const resolver = this.resolver;
     return {
       definition: {
@@ -460,6 +466,7 @@ export class ReadOnlyToolRegistry {
               memoryBytes: sandboxDefaults.memoryBytes,
               maxProcesses: sandboxDefaults.maxProcesses,
               maxOutputBytes: sandboxDefaults.maxOutputBytes,
+              workspaceBytes: workspaceQuotaBytes,
             },
           };
           return { ...makeResult('success', proposal), shellCommand: proposal };
@@ -907,6 +914,7 @@ export {
   type SandboxShellOptions,
   type SandboxShellResult,
 } from './sandbox-shell.js';
+export { type CgroupMode } from './systemd-cgroup.js';
 export {
   parseWebFetchAllowlist,
   RestrictedWebFetcher,

@@ -31,7 +31,7 @@ TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db \
   node --test tests/integration/shell-command-review.test.mjs
 ```
 
-该测试使用独立 `shell_review_test_*` schema，覆盖精确命令摘要、批准后一次性执行、结构化结果、失联后 `unknown` 终态，以及审计元数据不保存命令正文。
+该测试使用独立 `shell_review_test_*` schema，覆盖精确命令摘要、批准后一次性执行、结构化结果与资源用量、失联后 `unknown` 终态，以及审计元数据不保存命令正文。`sandbox-shell.test.mjs` 还覆盖缺少必需 cgroup 时执行前拒绝、旧提案默认配额、执行前超额和执行后总量超额；真实 systemd cgroup accounting 只在测试 ECS 验收。
 
 `chat-history.test.mjs` 还覆盖每轮模型调用、工具调用与 Jev 路由的结构化审计，验证失败/取消终态、Workspace 查询权限，以及审计元数据不包含提示词、模型输出、工具参数或密钥。
 

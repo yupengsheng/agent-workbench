@@ -1,5 +1,10 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import type { ShellCommandResult, ShellCommandSummary } from '@agent-workbench/contracts';
+import {
+  parseShellCommandProposal,
+  type ShellCommandProposal,
+  type ShellCommandResult,
+  type ShellCommandSummary,
+} from '@agent-workbench/contracts';
 import type { DatabaseHandle } from './client.js';
 import {
   auditRecords,
@@ -22,7 +27,14 @@ function result(row: typeof shellCommandReviews.$inferSelect): ShellCommandResul
     stderr: row.stderr ?? '',
     truncated: row.outputTruncated,
     durationMs: row.durationMs,
+    ...(row.resourceUsage ? { resourceUsage: row.resourceUsage } : {}),
   };
+}
+
+function proposal(value: unknown): ShellCommandProposal {
+  const parsed = parseShellCommandProposal(value);
+  if (!parsed) throw new Error('invalid persisted shell command proposal');
+  return parsed;
 }
 
 function summary(row: typeof shellCommandReviews.$inferSelect): ShellCommandSummary {
@@ -30,7 +42,7 @@ function summary(row: typeof shellCommandReviews.$inferSelect): ShellCommandSumm
     id: row.id,
     runId: row.runId,
     stepId: row.stepId,
-    proposal: row.proposal,
+    proposal: proposal(row.proposal),
     digest: row.digest,
     policyVersion: row.policyVersion as 'shell-review-v1',
     status:
@@ -205,7 +217,9 @@ export async function claimApprovedShellCommand(
         ),
       )
       .returning();
-    return claimed ? { ...claimed, workspaceId: candidate.workspaceId } : undefined;
+    return claimed
+      ? { ...claimed, proposal: proposal(claimed.proposal), workspaceId: candidate.workspaceId }
+      : undefined;
   });
 }
 
@@ -244,6 +258,7 @@ export async function finishShellCommandExecution(
         stderr: executionResult?.stderr ?? null,
         outputTruncated: executionResult?.truncated ?? false,
         durationMs: executionResult?.durationMs ?? null,
+        resourceUsage: executionResult?.resourceUsage ?? null,
         executionErrorCode: input.outcome.status === 'succeeded' ? null : input.outcome.code,
         executionErrorMessage: input.outcome.status === 'succeeded' ? null : input.outcome.message,
       })
@@ -267,6 +282,9 @@ export async function finishShellCommandExecution(
               signal: executionResult.signal,
               truncated: executionResult.truncated,
               durationMs: executionResult.durationMs,
+              ...(executionResult.resourceUsage
+                ? { resourceUsage: executionResult.resourceUsage }
+                : {}),
             }
           : {}),
         ...(input.outcome.status === 'succeeded' ? {} : { errorCode: input.outcome.code }),
@@ -284,6 +302,9 @@ export async function finishShellCommandExecution(
                 signal: executionResult.signal,
                 truncated: executionResult.truncated,
                 durationMs: executionResult.durationMs,
+                ...(executionResult.resourceUsage
+                  ? { resourceUsage: executionResult.resourceUsage }
+                  : {}),
               }
             : {}),
           ...(input.outcome.status === 'succeeded' ? {} : { code: input.outcome.code }),

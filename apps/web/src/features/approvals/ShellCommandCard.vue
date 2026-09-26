@@ -12,6 +12,13 @@ const emit = defineEmits<{ changed: [command: ShellCommandSummary]; refresh: [] 
 const saving = ref(false);
 const error = ref('');
 
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${bytes} B`;
+}
+
 function statusLabel() {
   if (props.command.executionStatus === 'executing') return '执行中';
   if (props.command.executionStatus === 'succeeded') return '执行成功';
@@ -57,6 +64,7 @@ async function decide(decision: 'approve' | 'reject') {
         }}
         MiB · 进程：{{ command.proposal.sandbox.maxProcesses }}
       </p>
+      <p>工作区磁盘配额：{{ formatBytes(command.proposal.sandbox.workspaceBytes) }}</p>
       <p>
         审批摘要：<code>{{ command.digest }}</code>
       </p>
@@ -67,6 +75,21 @@ async function decide(decision: 'approve' | 'reject') {
         退出码：{{ command.result.exitCode ?? '无' }} · 信号：{{ command.result.signal ?? '无' }} ·
         耗时：{{ command.result.durationMs }} ms
       </p>
+      <div v-if="command.result.resourceUsage" class="resource-usage">
+        <strong>资源用量</strong>
+        <p>
+          cgroup：{{ command.result.resourceUsage.cgroupEnforced ? '已强制隔离' : '未启用' }} ·
+          CPU：{{ (command.result.resourceUsage.cpuUsec / 1000).toFixed(0) }} ms · 内存峰值：{{
+            formatBytes(command.result.resourceUsage.memoryPeakBytes)
+          }}
+          · 进程峰值：{{ command.result.resourceUsage.processPeak }}
+        </p>
+        <p>
+          工作区：{{ formatBytes(command.result.resourceUsage.workspaceBytesBefore) }} →
+          {{ formatBytes(command.result.resourceUsage.workspaceBytesAfter) }} /
+          {{ formatBytes(command.result.resourceUsage.workspaceQuotaBytes) }}
+        </p>
+      </div>
       <details v-if="command.result.stdout">
         <summary>标准输出</summary>
         <pre><code>{{ command.result.stdout }}</code></pre>
@@ -130,9 +153,18 @@ pre code {
   font-size: 12px;
 }
 .command-policy,
-.result-meta {
+.result-meta,
+.resource-usage {
   color: var(--mao-muted);
   overflow-wrap: anywhere;
+}
+.resource-usage {
+  padding: 10px 12px;
+  border-left: 3px solid var(--mao-border);
+  background: var(--mao-canvas);
+}
+.resource-usage p {
+  margin: 4px 0 0;
 }
 .status-badge.approved {
   color: var(--mao-primary);

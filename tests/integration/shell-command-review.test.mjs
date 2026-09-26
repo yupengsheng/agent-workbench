@@ -28,6 +28,7 @@ function proposal(command = 'npm test') {
       memoryBytes: 512 * 1024 * 1024,
       maxProcesses: 64,
       maxOutputBytes: 64 * 1024,
+      workspaceBytes: 2 * 1024 ** 3,
     },
   };
 }
@@ -154,6 +155,7 @@ test(
         executions += 1;
         assert.equal(input, exactProposal.command);
         assert.equal(limits.timeoutMs, exactProposal.sandbox.timeoutMs);
+        assert.equal(limits.workspaceQuotaBytes, exactProposal.sandbox.workspaceBytes);
         return {
           status: 'success',
           exitCode: 0,
@@ -162,6 +164,15 @@ test(
           stderr: '',
           truncated: false,
           durationMs: 12,
+          resourceUsage: {
+            cgroupEnforced: true,
+            cpuUsec: 12_000,
+            memoryPeakBytes: 8 * 1024 * 1024,
+            processPeak: 2,
+            workspaceBytesBefore: 100,
+            workspaceBytesAfter: 120,
+            workspaceQuotaBytes: exactProposal.sandbox.workspaceBytes,
+          },
         };
       };
       assert.equal(
@@ -189,6 +200,15 @@ test(
       assert.equal(executed.executionStatus, 'succeeded');
       assert.equal(executed.result.stdout, 'approved');
       assert.equal(executed.result.exitCode, 0);
+      assert.deepEqual(executed.result.resourceUsage, {
+        cgroupEnforced: true,
+        cpuUsec: 12_000,
+        memoryPeakBytes: 8 * 1024 * 1024,
+        processPeak: 2,
+        workspaceBytesBefore: 100,
+        workspaceBytesAfter: 120,
+        workspaceQuotaBytes: exactProposal.sandbox.workspaceBytes,
+      });
 
       const unknownId = randomUUID();
       const unknownStepId = randomUUID();
@@ -239,6 +259,7 @@ test(
           'shell_command.unknown',
         ],
       );
+      assert.deepEqual(audits.rows[2].metadata.resourceUsage, executed.result.resourceUsage);
       assert.equal(
         JSON.stringify(audits.rows.map((row) => row.metadata)).includes('printf'),
         false,

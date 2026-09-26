@@ -13,12 +13,23 @@ export interface ShellCommandProposal {
     memoryBytes: number;
     maxProcesses: number;
     maxOutputBytes: number;
+    workspaceBytes: number;
   };
 }
 
 export type ShellCommandStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 export type ShellCommandExecutionStatus =
   'not_started' | 'executing' | 'succeeded' | 'failed' | 'unknown';
+
+export interface ShellCommandResourceUsage {
+  cgroupEnforced: boolean;
+  cpuUsec: number;
+  memoryPeakBytes: number;
+  processPeak: number;
+  workspaceBytesBefore: number;
+  workspaceBytesAfter: number;
+  workspaceQuotaBytes: number;
+}
 
 export interface ShellCommandResult {
   exitCode: number | null;
@@ -27,6 +38,7 @@ export interface ShellCommandResult {
   stderr: string;
   truncated: boolean;
   durationMs: number;
+  resourceUsage?: ShellCommandResourceUsage;
 }
 
 export interface ShellCommandSummary {
@@ -55,6 +67,9 @@ function boundedInteger(value: unknown, min: number, max: number): value is numb
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max;
 }
 
+export const DEFAULT_SHELL_WORKSPACE_BYTES = 2 * 1024 ** 3;
+export const MAX_SHELL_WORKSPACE_BYTES = 100 * 1024 ** 3;
+
 /** Validate the exact command and limits before an approval target is persisted. */
 export function parseShellCommandProposal(value: unknown): ShellCommandProposal | undefined {
   if (
@@ -78,7 +93,9 @@ export function parseShellCommandProposal(value: unknown): ShellCommandProposal 
     !boundedInteger(value.sandbox.cpuSeconds, 1, 120) ||
     !boundedInteger(value.sandbox.memoryBytes, 1, 2 * 1024 ** 3) ||
     !boundedInteger(value.sandbox.maxProcesses, 1, 256) ||
-    !boundedInteger(value.sandbox.maxOutputBytes, 1, 512 * 1024)
+    !boundedInteger(value.sandbox.maxOutputBytes, 1, 512 * 1024) ||
+    (value.sandbox.workspaceBytes !== undefined &&
+      !boundedInteger(value.sandbox.workspaceBytes, 1, MAX_SHELL_WORKSPACE_BYTES))
   )
     return undefined;
   return {
@@ -96,6 +113,10 @@ export function parseShellCommandProposal(value: unknown): ShellCommandProposal 
       memoryBytes: value.sandbox.memoryBytes,
       maxProcesses: value.sandbox.maxProcesses,
       maxOutputBytes: value.sandbox.maxOutputBytes,
+      workspaceBytes:
+        value.sandbox.workspaceBytes === undefined
+          ? DEFAULT_SHELL_WORKSPACE_BYTES
+          : value.sandbox.workspaceBytes,
     },
   };
 }

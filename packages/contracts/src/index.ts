@@ -55,8 +55,13 @@ export { parseFileChangePreview, parseFileChangeProposal } from './file-changes.
 export type {
   ShellCommandExecutionStatus,
   ShellCommandProposal,
+  ShellCommandResourceUsage,
   ShellCommandResult,
   ShellCommandStatus,
   ShellCommandSummary,
 } from './shell-commands.js';
-export { parseShellCommandProposal } from './shell-commands.js';
+export {
+  DEFAULT_SHELL_WORKSPACE_BYTES,
+  MAX_SHELL_WORKSPACE_BYTES,
+  parseShellCommandProposal,
+} from './shell-commands.js';

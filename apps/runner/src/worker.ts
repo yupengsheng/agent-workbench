@@ -1,7 +1,11 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { and, eq, inArray } from 'drizzle-orm';
-import { parseChatRequest } from '@agent-workbench/contracts';
+import {
+  DEFAULT_SHELL_WORKSPACE_BYTES,
+  MAX_SHELL_WORKSPACE_BYTES,
+  parseChatRequest,
+} from '@agent-workbench/contracts';
 import {
   AgentLoopError,
   executeAgentLoop,
@@ -17,6 +21,7 @@ import {
   executeSandboxedShell,
   parseWebFetchAllowlist,
   resolveSandboxWorkspace,
+  type CgroupMode,
   type ToolExecutionResult,
 } from '@agent-workbench/tools';
 import type { DatabaseHandle } from '@agent-workbench/persistence/client';
@@ -55,6 +60,29 @@ const defaultWorkspaceRoot =
 const webFetchAllowedHosts = parseWebFetchAllowlist(
   process.env.AGENT_WORKBENCH_WEB_FETCH_ALLOWLIST,
 );
+
+function configuredWorkspaceQuota(): number {
+  const input = process.env.AGENT_WORKBENCH_WORKSPACE_QUOTA_BYTES;
+  if (input === undefined || input === '') return DEFAULT_SHELL_WORKSPACE_BYTES;
+  const value = Number(input);
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_SHELL_WORKSPACE_BYTES) {
+    throw new Error(
+      `AGENT_WORKBENCH_WORKSPACE_QUOTA_BYTES must be an integer from 1 to ${MAX_SHELL_WORKSPACE_BYTES}`,
+    );
+  }
+  return value;
+}
+
+function configuredCgroupMode(): CgroupMode {
+  const input =
+    process.env.AGENT_WORKBENCH_SHELL_CGROUP_MODE ??
+    (process.env.NODE_ENV === 'production' ? 'required' : 'disabled');
+  if (input === 'disabled' || input === 'optional' || input === 'required') return input;
+  throw new Error('AGENT_WORKBENCH_SHELL_CGROUP_MODE must be disabled, optional, or required');
+}
+
+const shellWorkspaceQuotaBytes = configuredWorkspaceQuota();
+const shellCgroupMode = configuredCgroupMode();
 
 /** Execute one approved, exact-content file proposal on the Runner side. */
 export async function applyApprovedFileChange(
@@ -108,6 +136,8 @@ export async function executeApprovedShellCommand(
         memoryBytes: item.proposal.sandbox.memoryBytes,
         maxProcesses: item.proposal.sandbox.maxProcesses,
         maxOutputBytes: item.proposal.sandbox.maxOutputBytes,
+        workspaceQuotaBytes: item.proposal.sandbox.workspaceBytes ?? DEFAULT_SHELL_WORKSPACE_BYTES,
+        cgroupMode: shellCgroupMode,
       },
       signal,
     );
@@ -118,6 +148,7 @@ export async function executeApprovedShellCommand(
       stderr: execution.stderr,
       truncated: execution.truncated,
       durationMs: execution.durationMs,
+      ...(execution.resourceUsage ? { resourceUsage: execution.resourceUsage } : {}),
     };
     outcome =
       execution.status === 'success'
@@ -133,7 +164,19 @@ export async function executeApprovedShellCommand(
                   ? '命令执行已取消，可能已产生部分工作区变更'
                   : execution.errorCode === 'sandbox_unavailable'
                     ? '执行沙箱不可用，命令未执行'
-                    : '命令未成功完成，请检查退出码和标准错误',
+                    : execution.errorCode === 'cgroup_unavailable'
+                      ? '资源隔离不可用，命令未执行'
+                      : execution.errorCode === 'cpu_limit'
+                        ? '命令已达到 CPU 时间上限并终止'
+                        : execution.errorCode === 'memory_limit'
+                          ? '命令已达到内存上限并终止'
+                          : execution.errorCode === 'disk_limit'
+                            ? '命令已达到工作区磁盘配额并终止'
+                            : execution.errorCode === 'workspace_quota_exceeded'
+                              ? '工作区已超过磁盘配额，命令未执行'
+                              : execution.errorCode === 'workspace_quota_unavailable'
+                                ? '无法核对工作区磁盘用量，命令未执行'
+                                : '命令未成功完成，请检查退出码和标准错误',
           };
   } catch (error) {
     outcome = {
@@ -468,6 +511,7 @@ export async function executeRun(
         enabled:
           process.env.AGENT_WORKBENCH_ENABLE_SHELL === 'true' &&
           connection.capabilities.shell === true,
+        workspaceQuotaBytes: shellWorkspaceQuotaBytes,
       },
       web: {
         enabled:

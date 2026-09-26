@@ -21,6 +21,7 @@ test('Shell command approval shows the exact target and execution result', async
         memoryBytes: 512 * 1024 * 1024,
         maxProcesses: 64,
         maxOutputBytes: 64 * 1024,
+        workspaceBytes: 2 * 1024 ** 3,
       },
     },
     digest: 'a'.repeat(64),
@@ -60,6 +61,15 @@ test('Shell command approval shows the exact target and execution result', async
               stderr: '',
               truncated: false,
               durationMs: 125,
+              resourceUsage: {
+                cgroupEnforced: true,
+                cpuUsec: 75_000,
+                memoryPeakBytes: 24 * 1024 * 1024,
+                processPeak: 3,
+                workspaceBytesBefore: 1024,
+                workspaceBytesAfter: 2048,
+                workspaceQuotaBytes: 2 * 1024 ** 3,
+              },
             },
           }
         : command,
@@ -122,9 +132,12 @@ test('Shell command approval shows the exact target and execution result', async
   await expect(page.getByText(command.proposal.command, { exact: true })).toBeVisible();
   await page.getByText('执行边界').click();
   await expect(page.getByText(/网络：禁用/)).toBeVisible();
+  await expect(page.getByText(/工作区磁盘配额：2.00 GiB/)).toBeVisible();
   await page.getByRole('button', { name: '批准并执行' }).click();
   await expect(page.getByText('执行成功', { exact: true })).toBeVisible();
   await page.getByText('标准输出', { exact: true }).click();
   await expect(page.getByText('2 tests passed', { exact: true })).toBeVisible();
   await expect(page.getByText(/退出码：0/)).toBeVisible();
+  await expect(page.getByText(/cgroup：已强制隔离/)).toBeVisible();
+  await expect(page.getByText(/CPU：75 ms/)).toBeVisible();
 });

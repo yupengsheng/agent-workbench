@@ -1,5 +1,9 @@
 import { relations } from 'drizzle-orm';
-import type { FileChangePreview, ShellCommandProposal } from '@agent-workbench/contracts';
+import type {
+  FileChangePreview,
+  ShellCommandProposal,
+  ShellCommandResourceUsage,
+} from '@agent-workbench/contracts';
 import {
   boolean,
   integer,
@@ -401,6 +405,7 @@ export const shellCommandReviews = pgTable(
     stderr: text('stderr'),
     outputTruncated: boolean('output_truncated').notNull().default(false),
     durationMs: integer('duration_ms'),
+    resourceUsage: jsonb('resource_usage').$type<ShellCommandResourceUsage>(),
     executionErrorCode: text('execution_error_code'),
     executionErrorMessage: text('execution_error_message'),
     ...auditTimestamps,
