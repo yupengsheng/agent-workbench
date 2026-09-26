@@ -93,6 +93,13 @@ test('admin audit renders friendly structured summaries without raw metadata', a
   });
 
   await page.goto('/admin');
+  await expect(page).toHaveURL(/\/admin\/overview$/);
+  await expect(page.getByRole('heading', { name: '管理入口' })).toBeVisible();
+  await page
+    .getByRole('navigation', { name: '管理员导航' })
+    .getByRole('button', { name: '调用流水' })
+    .click();
+  await expect(page).toHaveURL(/\/admin\/llm-calls$/);
   await expect(page.getByRole('heading', { name: '模型调用日志' })).toBeVisible();
   await expect(page.getByText('Jev 模型路由', { exact: true })).toBeVisible();
   await expect(
@@ -107,6 +114,11 @@ test('admin audit renders friendly structured summaries without raw metadata', a
   await page.getByRole('button', { name: '模型请求', exact: true }).click();
   await expect(page.locator('.model-log-row')).toHaveCount(1);
   await page.getByRole('button', { name: '全部', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: '管理员导航' })
+    .getByRole('button', { name: '审计日志' })
+    .click();
+  await expect(page).toHaveURL(/\/admin\/audit-logs$/);
   await expect(page.getByRole('heading', { name: '审计记录' })).toBeVisible();
   await expect(page.getByText('模型调用已完成', { exact: true })).toBeVisible();
   await expect(
@@ -117,6 +129,18 @@ test('admin audit renders friendly structured summaries without raw metadata', a
   await page.getByRole('button', { name: '刷新审计记录' }).click();
   await expect.poll(() => auditRequests).toBe(2);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '打开导航' }).click();
+  await expect
+    .poll(() =>
+      page
+        .locator('.admin-layout-aside')
+        .evaluate((element) => element.getBoundingClientRect().left),
+    )
+    .toBeGreaterThanOrEqual(0);
+  await page
+    .getByRole('navigation', { name: '管理员导航' })
+    .getByRole('button', { name: '调用流水' })
+    .click();
   await expect(page.getByRole('heading', { name: '模型调用日志' })).toBeVisible();
   await expect(page.getByLabel('调用状态')).toBeVisible();
   await expect

@@ -21,6 +21,14 @@ import {
 import ModelConnectionsPanel from './features/admin/ModelConnectionsPanel.vue';
 import ModelInvocationLogsPanel from './features/admin/ModelInvocationLogsPanel.vue';
 import AuditRecordsPanel from './features/admin/AuditRecordsPanel.vue';
+import AdminShell from './features/admin/AdminShell.vue';
+import AdminOverviewPanel from './features/admin/AdminOverviewPanel.vue';
+import AgentManagementPanel from './features/admin/AgentManagementPanel.vue';
+import {
+  adminSectionFromPath,
+  adminSectionItem,
+  type AdminSection,
+} from './features/admin/adminNavigation';
 import ChatPanel from './features/user/ChatPanel.vue';
 import WorkbenchShell from './features/layout/WorkbenchShell.vue';
 import RunInspector from './features/layout/RunInspector.vue';
@@ -29,6 +37,7 @@ type Route = 'user' | 'admin';
 type LoadState = 'loading' | 'ready' | 'error';
 
 const route = ref<Route>(window.location.pathname.startsWith('/admin') ? 'admin' : 'user');
+const adminSection = ref<AdminSection>(adminSectionFromPath(window.location.pathname));
 const healthState = ref<'checking' | 'connected' | 'unavailable'>('checking');
 const healthDetail = ref('正在检查服务连接');
 const authState = ref<LoadState>('loading');
@@ -59,6 +68,9 @@ const inspector = ref({
 
 const selectedWorkspace = computed(() =>
   workspaces.value.find((workspace) => workspace.id === selectedWorkspaceId.value),
+);
+const canManageWorkspace = computed(
+  () => selectedWorkspace.value?.role === 'owner' || selectedWorkspace.value?.role === 'admin',
 );
 
 async function refreshHealth() {
@@ -168,7 +180,17 @@ async function submitLogout() {
 
 function setRoute(nextRoute: Route) {
   route.value = nextRoute;
-  window.history.pushState({}, '', nextRoute === 'admin' ? '/admin' : '/app');
+  window.history.pushState(
+    {},
+    '',
+    nextRoute === 'admin' ? adminSectionItem(adminSection.value).path : '/app',
+  );
+}
+
+function setAdminSection(section: AdminSection) {
+  adminSection.value = section;
+  route.value = 'admin';
+  window.history.pushState({}, '', adminSectionItem(section).path);
 }
 
 function startNewSession() {
@@ -228,8 +250,12 @@ async function selectWorkspace(workspaceId = selectedWorkspaceId.value) {
 }
 
 onMounted(async () => {
+  if (route.value === 'admin' && /^\/admin\/?$/.test(window.location.pathname)) {
+    window.history.replaceState({}, '', adminSectionItem(adminSection.value).path);
+  }
   window.addEventListener('popstate', () => {
     route.value = window.location.pathname.startsWith('/admin') ? 'admin' : 'user';
+    adminSection.value = adminSectionFromPath(window.location.pathname);
   });
   await Promise.all([refreshHealth(), loadAuthenticatedState()]);
 });
@@ -305,9 +331,59 @@ onMounted(async () => {
         </form>
       </section>
 
+      <AdminShell
+        v-else-if="route === 'admin'"
+        :active-section="adminSection"
+        :current-user="currentUser"
+        :workspaces="workspaces"
+        :selected-workspace-id="selectedWorkspaceId"
+        :health-state="healthState"
+        :health-detail="healthDetail"
+        @navigate="setAdminSection"
+        @open-workbench="setRoute('user')"
+        @logout="submitLogout"
+        @workspace-change="selectWorkspace"
+      >
+        <p v-if="dataError" class="form-error mao-page-error" role="alert">{{ dataError }}</p>
+        <AdminOverviewPanel
+          v-if="adminSection === 'overview'"
+          :models="models"
+          :agents="agents"
+          :sessions="sessions"
+          @open="setAdminSection"
+        />
+        <AgentManagementPanel
+          v-else-if="adminSection === 'agents'"
+          :workspace-id="selectedWorkspaceId"
+          :agents="agents"
+          :models="models"
+          :can-manage="canManageWorkspace"
+          @changed="refreshAdminData"
+        />
+        <ModelConnectionsPanel
+          v-else-if="adminSection === 'models'"
+          :workspace-id="selectedWorkspaceId"
+          :models="models"
+          :can-manage="canManageWorkspace"
+          @changed="refreshAdminData"
+        />
+        <ModelInvocationLogsPanel
+          v-else-if="adminSection === 'llm-calls'"
+          :workspace-id="selectedWorkspaceId"
+          :can-manage="canManageWorkspace"
+          :refresh-key="auditRefreshKey"
+        />
+        <AuditRecordsPanel
+          v-else
+          :workspace-id="selectedWorkspaceId"
+          :can-manage="canManageWorkspace"
+          :refresh-key="auditRefreshKey"
+        />
+      </AdminShell>
+
       <WorkbenchShell
         v-else
-        :route="route"
+        route="user"
         :current-user="currentUser"
         :workspaces="workspaces"
         :selected-workspace-id="selectedWorkspaceId"
@@ -323,64 +399,32 @@ onMounted(async () => {
         @new-session="startNewSession"
       >
         <p v-if="dataError" class="form-error mao-page-error" role="alert">{{ dataError }}</p>
-        <template v-if="route === 'admin'">
-          <div class="mao-stat-strip">
-            <article>
-              <span>模型连接</span><strong>{{ models.length }}</strong
-              ><small>服务端安全引用</small>
-            </article>
-            <article>
-              <span>Agent</span><strong>{{ agents.length }}</strong
-              ><small>可发布的工作流</small>
-            </article>
-            <article><span>通道</span><strong>0</strong><small>飞书适配器规划中</small></article>
-          </div>
-          <ModelConnectionsPanel
-            :workspace-id="selectedWorkspaceId"
-            :models="models"
-            :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
-            @changed="refreshAdminData"
-          />
-          <ModelInvocationLogsPanel
-            :workspace-id="selectedWorkspaceId"
-            :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
-            :refresh-key="auditRefreshKey"
-          />
-          <AuditRecordsPanel
-            :workspace-id="selectedWorkspaceId"
-            :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
-            :refresh-key="auditRefreshKey"
-          />
-        </template>
-        <template v-else>
-          <ChatPanel
-            :key="`${currentUser?.id}:${selectedWorkspaceId}:${chatResetKey}`"
-            :workspace-id="selectedWorkspaceId"
-            :models="models"
-            @inspector-update="updateInspector"
-            @session-created="refreshSessions"
-          />
-          <div class="mao-stat-strip compact">
-            <article>
-              <span>可用模型</span
-              ><strong>{{
-                models.filter((model) => model.status === 'active' && model.secretConfigured).length
-              }}</strong
-              ><small>由管理员配置并启用</small>
-            </article>
-            <article>
-              <span>可用 Agent</span><strong>{{ agents.length }}</strong
-              ><small>可用于后续任务编排</small>
-            </article>
-            <article>
-              <span>执行循环</span><strong>TAO</strong><small>Think · Act · Observe</small>
-            </article>
-          </div>
-        </template>
+        <ChatPanel
+          :key="`${currentUser?.id}:${selectedWorkspaceId}:${chatResetKey}`"
+          :workspace-id="selectedWorkspaceId"
+          :models="models"
+          @inspector-update="updateInspector"
+          @session-created="refreshSessions"
+        />
+        <div class="mao-stat-strip compact">
+          <article>
+            <span>可用模型</span
+            ><strong>{{
+              models.filter((model) => model.status === 'active' && model.secretConfigured).length
+            }}</strong
+            ><small>由管理员配置并启用</small>
+          </article>
+          <article>
+            <span>可用 Agent</span><strong>{{ agents.length }}</strong
+            ><small>可用于后续任务编排</small>
+          </article>
+          <article>
+            <span>执行循环</span><strong>TAO</strong><small>Think · Act · Observe</small>
+          </article>
+        </div>
 
         <template #inspector>
           <RunInspector
-            v-if="route === 'user'"
             :models="models"
             :pending="inspector.pending"
             :run-state="inspector.runState"
@@ -390,35 +434,6 @@ onMounted(async () => {
             :events="inspector.events"
             :error="inspector.error"
           />
-          <div v-else class="mao-inspector admin-inspector">
-            <div class="mao-inspector-header">
-              <div>
-                <span class="mao-kicker">GOVERNANCE</span>
-                <h3>治理检查器</h3>
-              </div>
-              <span class="mao-live-pill live"><span class="mao-live-dot"></span>已开启</span>
-            </div>
-            <section class="mao-inspector-card">
-              <div class="mao-card-label">工作空间</div>
-              <strong>{{ selectedWorkspace?.name || '未选择' }}</strong
-              ><small>{{ selectedWorkspace?.role || '无角色' }} · 受控配置</small>
-            </section>
-            <section class="mao-inspector-card">
-              <div class="mao-card-label">密钥策略</div>
-              <div class="mao-policy-row">
-                <span>浏览器可见</span><strong class="is-disabled">否</strong>
-              </div>
-              <div class="mao-policy-row">
-                <span>服务端加密</span><strong class="is-enabled">是</strong>
-              </div>
-              <div class="mao-policy-row">
-                <span>审计事件</span><strong class="is-enabled">记录中</strong>
-              </div>
-            </section>
-            <p class="mao-inspector-note">
-              模型密钥只在服务端保存，测试调用和状态变更都会进入审计链路。
-            </p>
-          </div>
         </template>
       </WorkbenchShell>
     </main>

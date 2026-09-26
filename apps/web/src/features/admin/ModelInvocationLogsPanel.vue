@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { RefreshCw } from '@lucide/vue';
 import type { AuditRecordSummary } from '@agent-workbench/contracts';
 import { getAuditRecords } from '../../lib/api';
 
@@ -237,7 +238,7 @@ watch(
         :disabled="loading"
         @click="load(true)"
       >
-        ↻
+        <RefreshCw :size="16" aria-hidden="true" />
       </button>
     </div>
 

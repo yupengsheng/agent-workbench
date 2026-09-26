@@ -814,7 +814,18 @@ body {
   padding: 0;
 }
 
+.page-shell:has(.admin-layout-container) {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
 .app-shell:has(.mao-shell) {
+  min-height: 100vh;
+  background: var(--mao-canvas);
+}
+
+.app-shell:has(.admin-layout-container) {
   min-height: 100vh;
   background: var(--mao-canvas);
 }
@@ -1943,6 +1954,258 @@ body {
 
 footer:has(+ *) {
   color: var(--mao-muted);
+}
+
+/* Mao admin layout: dense page cards and table-like content surfaces. */
+.admin-layout-content > .data-card {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: var(--mao-border);
+  border-radius: 4px;
+  background: var(--mao-surface);
+  box-shadow: none;
+}
+
+.admin-layout-content > .mao-page-error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 59, 48, 0.25);
+  border-radius: 4px;
+  background: rgba(255, 59, 48, 0.06);
+}
+
+.admin-layout-content .section-heading {
+  min-height: 62px;
+  margin: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--mao-border);
+}
+
+.admin-layout-content .section-heading h3 {
+  color: var(--mao-ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.admin-layout-content .section-description {
+  margin-top: 4px;
+  color: var(--mao-muted);
+  font-size: 12px;
+}
+
+.admin-layout-content .section-heading .compact-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  background: var(--mao-primary);
+}
+
+.admin-layout-content .notice,
+.admin-layout-content .success-message,
+.admin-layout-content > .data-card > .form-error,
+.admin-layout-content > .data-card > .empty-state {
+  margin: 16px 20px;
+}
+
+.admin-layout-content .model-editor {
+  margin: 16px 20px;
+  border-color: var(--mao-border);
+  border-radius: 4px;
+  background: var(--mao-canvas);
+}
+
+.admin-layout-content .model-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.1fr) 115px minmax(210px, 1.4fr) 105px 160px;
+  align-items: center;
+  gap: 16px;
+  min-height: 68px;
+  padding: 10px 20px;
+}
+
+.admin-layout-content .model-table {
+  min-width: 760px;
+}
+
+.admin-layout-content .model-table-head {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.1fr) 115px minmax(210px, 1.4fr) 105px 160px;
+  align-items: center;
+  gap: 16px;
+  min-height: 42px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--mao-border);
+  color: var(--mao-muted);
+  background: #fafafa;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.admin-layout-content .model-name-cell,
+.admin-layout-content .model-endpoint-cell,
+.admin-layout-content .model-state-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 9px;
+}
+
+.admin-layout-content .model-name-cell > span:last-child,
+.admin-layout-content .model-endpoint-cell,
+.admin-layout-content .model-state-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-layout-content .model-glyph {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--mao-primary);
+  background: var(--mao-primary-soft);
+}
+
+.admin-layout-content .model-name-cell strong,
+.admin-layout-content .model-endpoint-cell strong {
+  color: var(--mao-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-layout-content .model-name-cell small,
+.admin-layout-content .model-endpoint-cell small,
+.admin-layout-content .model-state-cell small,
+.admin-layout-content .model-provider-cell,
+.admin-layout-content .model-readonly-cell,
+.admin-layout-content .model-meta {
+  color: var(--mao-muted);
+  font-size: 11px;
+}
+
+.admin-layout-content .model-endpoint-cell small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-layout-content .model-state-cell {
+  justify-items: start;
+}
+
+.admin-layout-content .row-actions button {
+  border: 0;
+  color: var(--mao-primary);
+  background: transparent;
+}
+
+.admin-layout-content .row-actions button:hover {
+  background: var(--mao-primary-soft);
+}
+
+.admin-layout-content .row-actions button:last-child {
+  color: var(--mao-danger);
+}
+
+.admin-layout-content .model-log-toolbar {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--mao-divider);
+}
+
+.admin-layout-content .model-log-list,
+.admin-layout-content .audit-list {
+  margin: 0;
+}
+
+.admin-layout-content .model-log-row,
+.admin-layout-content .audit-row {
+  padding-right: 20px;
+  padding-left: 20px;
+}
+
+.admin-layout-content .model-log-row:first-child,
+.admin-layout-content .audit-row:first-child {
+  border-top: 0;
+}
+
+.admin-layout-content .audit-load-more {
+  margin-bottom: 16px;
+}
+
+.admin-layout-content .audit-refresh-button {
+  display: grid;
+  place-items: center;
+}
+
+@media (max-width: 768px) {
+  .admin-layout-content .section-heading {
+    align-items: flex-start;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .admin-layout-content .notice,
+  .admin-layout-content .success-message,
+  .admin-layout-content > .data-card > .form-error,
+  .admin-layout-content > .data-card > .empty-state,
+  .admin-layout-content .model-editor {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+
+  .admin-layout-content .model-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 11px 12px;
+    min-height: 0;
+    margin: 0 14px;
+    padding: 15px 0;
+  }
+
+  .admin-layout-content .model-table {
+    min-width: 0;
+  }
+
+  .admin-layout-content .model-table-head {
+    display: none;
+  }
+
+  .admin-layout-content .model-name-cell {
+    grid-column: 1;
+  }
+
+  .admin-layout-content .model-state-cell {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .admin-layout-content .model-provider-cell {
+    display: none;
+  }
+
+  .admin-layout-content .model-endpoint-cell {
+    grid-column: 1 / -1;
+  }
+
+  .admin-layout-content .row-actions,
+  .admin-layout-content .model-readonly-cell {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    margin: 0;
+  }
+
+  .admin-layout-content .model-log-toolbar {
+    padding: 12px 14px;
+  }
+
+  .admin-layout-content .model-log-row,
+  .admin-layout-content .audit-row {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
 }
 
 @media (max-width: 1100px) {

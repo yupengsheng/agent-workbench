@@ -1,10 +1,10 @@
 # Mao 设计参考
 
-调研日期：2026-09-20。用户提供地址：<https://github.com/yupengsheng/mao.git>。
+调研日期：2026-09-20；管理端复核日期：2026-09-26。用户提供地址：<https://github.com/yupengsheng/mao.git>。
 
-本次参考来自已有本地 checkout：`/home/yupengsheng/workspace/mao`，remote 为 `https://github.com/DC-ET/mao.git`，提交 `f5e7ae47ceae047867255b97b88e9bdca3cee842`（2026-09-18）。未确认两个远端的关系或 GitHub 最新状态；下面的源码链接指向实际查看的提交。
+最初的执行内核调研来自本地 checkout `f5e7ae47ceae047867255b97b88e9bdca3cee842`（2026-09-18）。管理端改版另行拉取并核对了用户仓库 `main` 的 `a57e8c273c9626062a69beca1ad100888e36626a`。下面的运行内核源码链接仍指向最初实际查看的固定提交。
 
-这是设计借鉴记录，不是完整代码审计、漏洞报告或生产验证。没有把 Mao 代码复制进本仓库。
+这是设计与复用记录，不是完整代码审计、漏洞报告或生产验证。管理端壳层、导航、页签、间距和响应式行为按 Mao 的 MIT 许可改编，版权与许可全文见 `THIRD_PARTY_NOTICES.md`；Mao 后端、数据库和执行语义没有复制。
 
 ## 借鉴映射
 
@@ -34,6 +34,8 @@
 
 ## 当前 Web 界面实现
 
-2026-09-22 起，用户工作台和管理员控制台采用 Mao 的任务工作流作为交互参考：顶部窄导航、左侧工作空间与会话列表、中间主工作区、右侧任务检查器。当前实现位于 `apps/web/src/features/layout/WorkbenchShell.vue` 和 `RunInspector.vue`，不引入 Mao 的桌面端依赖；现有认证、工作空间权限、模型配置、Chat、Jev 路由和 Run SSE 仍沿用本仓库 API。
+2026-09-22 起，用户工作台采用 Mao 的任务工作流作为交互参考：顶部窄导航、左侧工作空间与会话列表、中间主工作区、右侧任务检查器。当前实现位于 `apps/web/src/features/layout/WorkbenchShell.vue` 和 `RunInspector.vue`，不引入 Mao 的桌面端依赖；现有认证、工作空间权限、模型配置、Chat、Jev 路由和 Run SSE 仍沿用本仓库 API。
 
-右侧检查器显示服务端 Runner 状态、实际路由模型、TAO 事件和密钥策略。会话列表当前先提供工作空间内的当前对话入口，待会话列表 API 完成后再替换为持久化任务索引。界面为 Mao 风格的独立实现，没有复制 Mao 的后端逻辑或桌面端组件代码。
+2026-09-26 起，管理员控制台按 Mao 管理后台实现固定侧栏、56px 顶栏、36px 多页签栏、单模块内容区和移动端抽屉导航，代码位于 `apps/web/src/features/admin/AdminShell.vue`。实现复用了 Mao 的界面结构和视觉参数，并替换为本仓库的 Vue 组件、Lucide 图标、公开契约和权限逻辑。
+
+用户工作台右侧检查器显示服务端 Runner 状态、实际路由模型、TAO 事件和密钥策略。会话列表使用持久化 Session 索引。两套界面都继续使用本仓库的认证、权限、模型密钥、Jev、审计和执行 API。

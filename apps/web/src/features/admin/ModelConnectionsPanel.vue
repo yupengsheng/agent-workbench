@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+import { Cpu, Plus } from '@lucide/vue';
 import type {
   ModelConnectionInput,
   ModelConnectionStatus,
@@ -252,6 +253,7 @@ function formatDate(value: string | null) {
         </p>
       </div>
       <button v-if="canManage" type="button" class="compact-primary" @click="openCreate">
+        <Plus :size="16" aria-hidden="true" />
         新增模型
       </button>
     </div>
@@ -358,39 +360,57 @@ function formatDate(value: string | null) {
     <p v-if="models.length === 0 && !editorOpen" class="empty-state">
       当前工作空间还没有模型连接。新增后可以测试服务端密钥和模型连通性。
     </p>
-    <div v-for="model in models" :key="model.id" class="data-row model-row">
-      <div class="model-info">
-        <div class="model-title-line">
-          <strong>{{ model.name }}</strong>
-          <span class="status-badge" :class="model.status">{{ statusLabel(model.status) }}</span>
-        </div>
-        <small>{{ providerLabel(model.provider) }} · {{ model.modelIdentifier }}</small>
-        <small class="model-meta">
-          {{ model.secretConfigured ? '服务端密钥已配置' : '未配置密钥' }} · {{ model.baseUrl }}
-        </small>
-        <small class="model-meta">
-          最近测试：{{ testStatusLabel(model.lastTestStatus) }} ·
-          {{ formatDate(model.lastTestedAt) }}
-        </small>
+    <div v-if="models.length > 0" class="model-table" role="table" aria-label="模型连接列表">
+      <div class="model-table-head" role="row">
+        <span role="columnheader">名称</span>
+        <span role="columnheader">供应商</span>
+        <span role="columnheader">模型与 API</span>
+        <span role="columnheader">状态</span>
+        <span role="columnheader">操作</span>
       </div>
-      <div v-if="canManage" class="row-actions">
-        <button
-          type="button"
-          :disabled="Boolean(testingId || togglingId) || model.status !== 'active'"
-          @click="testModel(model)"
-        >
-          {{ testingId === model.id ? '测试中…' : '测试连接' }}
-        </button>
-        <button type="button" :disabled="Boolean(testingId || togglingId)" @click="openEdit(model)">
-          编辑
-        </button>
-        <button
-          type="button"
-          :disabled="Boolean(testingId || togglingId)"
-          @click="toggleModel(model)"
-        >
-          {{ togglingId === model.id ? '处理中…' : model.status === 'active' ? '停用' : '启用' }}
-        </button>
+      <div v-for="model in models" :key="model.id" class="data-row model-row" role="row">
+        <div class="model-name-cell" role="cell">
+          <span class="model-glyph"><Cpu :size="16" aria-hidden="true" /></span>
+          <span>
+            <strong>{{ model.name }}</strong>
+            <small>{{ model.secretConfigured ? '密钥已配置' : '未配置密钥' }}</small>
+          </span>
+        </div>
+        <span class="model-provider-cell" role="cell">{{ providerLabel(model.provider) }}</span>
+        <span class="model-endpoint-cell" role="cell">
+          <strong>{{ model.modelIdentifier }}</strong>
+          <small :title="model.baseUrl">{{ model.baseUrl }}</small>
+        </span>
+        <span class="model-state-cell" role="cell">
+          <span class="status-badge" :class="model.status">{{ statusLabel(model.status) }}</span>
+          <small :title="formatDate(model.lastTestedAt)">{{
+            testStatusLabel(model.lastTestStatus)
+          }}</small>
+        </span>
+        <div v-if="canManage" class="row-actions" role="cell">
+          <button
+            type="button"
+            :disabled="Boolean(testingId || togglingId) || model.status !== 'active'"
+            @click="testModel(model)"
+          >
+            {{ testingId === model.id ? '测试中…' : '测试' }}
+          </button>
+          <button
+            type="button"
+            :disabled="Boolean(testingId || togglingId)"
+            @click="openEdit(model)"
+          >
+            编辑
+          </button>
+          <button
+            type="button"
+            :disabled="Boolean(testingId || togglingId)"
+            @click="toggleModel(model)"
+          >
+            {{ togglingId === model.id ? '处理中…' : model.status === 'active' ? '停用' : '启用' }}
+          </button>
+        </div>
+        <span v-else class="model-readonly-cell" role="cell">—</span>
       </div>
     </div>
   </section>

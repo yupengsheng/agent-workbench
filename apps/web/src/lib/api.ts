@@ -1,5 +1,6 @@
 import type {
   AgentListResponse,
+  AgentDetailResponse,
   AuditRecordListResponse,
   AuthResponse,
   FileChangeSummary,
@@ -124,6 +125,25 @@ export function testModelConnection(
 export function getAgents(workspaceId: string): Promise<AgentListResponse> {
   return readJson<AgentListResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/agents`,
+  );
+}
+
+export function createAgent(
+  workspaceId: string,
+  input: {
+    slug: string;
+    name: string;
+    description: string;
+    config: Record<string, unknown>;
+  },
+): Promise<AgentDetailResponse> {
+  return readJson<AgentDetailResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/agents`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    },
   );
 }
 
