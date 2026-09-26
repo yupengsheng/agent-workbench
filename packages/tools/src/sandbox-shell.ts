@@ -227,7 +227,6 @@ export async function executeSandboxedShell(
     '/workspace',
     '--chdir',
     '/workspace',
-    '--clearenv',
     '--setenv',
     'HOME',
     '/tmp',
