@@ -155,6 +155,7 @@ wait_for_url() {
 }
 
 SERVICE_NAME=agent-workbench-runner NODE_ENV=production \
+  AGENT_WORKBENCH_ENABLE_SHELL="${AGENT_WORKBENCH_ENABLE_SHELL:-true}" \
   nohup node apps/runner/dist/main.js >"$runtime_dir/runner.log" 2>&1 &
 echo $! >"$runtime_dir/runner.pid"
 
