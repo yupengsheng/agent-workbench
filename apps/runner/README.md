@@ -11,6 +11,8 @@ npm run dev
 
 Runner 支持在聊天请求中使用 `routing.mode=jev` 自动选择模型。配置 `TYPESAFE_API_KEY`、`TYPESAFE_ROUTER_TIMEOUT_MS`（默认 5000）和 `TYPESAFE_ROUTER_MIN_CONFIDENCE`（默认 0.65）后，Runner 会把用户请求和已授权的模型候选交给 TypeSafe Jev。低于阈值、候选变更或路由服务不可用都会结束任务并要求用户手动选择模型；不会静默调用任意候选。TypeSafe 密钥只存在 Runner 环境，不会写入数据库或返回浏览器。
 
+Runner 为每轮模型请求、Jev 选择和工具调用写入结构化审计。调用开始和完成、失败或取消分别记录；元数据只包含 Run/Step 关联、模型或工具标识、状态与数值用量，不包含提示词、模型回复、工具参数、文件内容、Shell 命令或密钥。审计写入受 Run 租约 fencing 保护，写入失败时当前 Run 不会继续执行。
+
 已有 runner 环境文件时直接维护该文件，无需重建链接。没有数据库配置的开发启动会显示 idle；生产启动缺少配置会失败。单独启动：
 
 ```bash

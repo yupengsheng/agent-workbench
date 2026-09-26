@@ -2,6 +2,7 @@ import { runOnce, executeRun } from '../../apps/runner/dist/worker.js';
 import {
   claimRun,
   finishRun,
+  recordModelRoute,
   renewLease,
   requestRunCancellation,
   recoverExpiredRuns,
@@ -35,20 +36,67 @@ test(
     const oldKey = process.env.MODEL_SECRET_ENCRYPTION_KEY;
     process.env.MODEL_SECRET_ENCRYPTION_KEY = randomBytes(32).toString('hex');
     const secret = `fixture-key-${randomUUID()}`;
+    const auditInputMarker = `audit-input-${randomUUID()}`;
+    const auditArgumentMarker = `audit-argument-${randomUUID()}`;
+    const auditOutputMarker = `audit-output-${randomUUID()}`;
+    const routePromptMarker = `route-prompt-${randomUUID()}`;
     const provider = createServer(async (req, res) => {
       modelCalls++;
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString());
+      const lastMessage = body.messages.at(-1);
       res.setHeader('content-type', 'application/json');
-      if (body.messages.at(-1).content === 'hold') {
+      if (lastMessage.content === 'hold') {
         heldResponse = res;
         modelStarted?.();
         return;
       }
-      if (body.messages.at(-1).content === 'fail') {
+      if (lastMessage.content === 'fail') {
         res.writeHead(401);
         res.end(JSON.stringify({ error: `upstream must not expose ${secret}` }));
+      } else if (
+        body.messages.some((message) => message.content === auditInputMarker) &&
+        lastMessage.role === 'user'
+      ) {
+        res.end(
+          JSON.stringify({
+            model: 'fixture-model',
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'audit-tool-call',
+                      type: 'function',
+                      function: {
+                        name: 'read_file',
+                        arguments: JSON.stringify({ path: auditArgumentMarker }),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: 'tool_calls',
+              },
+            ],
+            usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+          }),
+        );
+      } else if (body.messages.some((message) => message.content === auditInputMarker)) {
+        res.end(
+          JSON.stringify({
+            model: 'fixture-model',
+            choices: [
+              {
+                message: { role: 'assistant', content: auditOutputMarker },
+                finish_reason: 'stop',
+              },
+            ],
+            usage: { prompt_tokens: 4, completion_tokens: 3, total_tokens: 7 },
+          }),
+        );
       } else {
         res.end(
           JSON.stringify({
@@ -264,6 +312,17 @@ test(
           );
           assert(!JSON.stringify(detail).includes(secret));
           assert(!response.body.includes(secret));
+          const auditRows = (
+            await database.pool.query(
+              "SELECT action,metadata FROM audit_records WHERE metadata->>'runId'=$1 ORDER BY created_at,id",
+              [response.json().runId],
+            )
+          ).rows;
+          assert.deepEqual(
+            auditRows.map((row) => row.action),
+            ['model_call.started', 'model_call.failed'],
+          );
+          assert(!JSON.stringify(auditRows).includes(secret));
           assert.equal((await request('GET', `${base}/sessions`)).json().sessions.length, 1);
         },
       );
@@ -277,6 +336,85 @@ test(
         return result.json();
       };
       const detail = async (runId) => (await request('GET', `${base}/runs/${runId}`)).json();
+
+      await t.test('model and tool audit records retain only structured metadata', async () => {
+        const accepted = await submit(auditInputMarker);
+        await runOnce(database, randomUUID());
+        assert.equal((await detail(accepted.runId)).run.status, 'succeeded');
+        const auditRows = (
+          await database.pool.query(
+            "SELECT action,resource_type,metadata FROM audit_records WHERE metadata->>'runId'=$1 ORDER BY created_at,id",
+            [accepted.runId],
+          )
+        ).rows;
+        const actions = auditRows.map((row) => row.action);
+        assert.equal(actions.filter((action) => action === 'model_call.started').length, 2);
+        assert.equal(actions.filter((action) => action === 'model_call.completed').length, 2);
+        assert.equal(actions.filter((action) => action === 'tool_call.started').length, 1);
+        assert.equal(actions.filter((action) => action === 'tool_call.completed').length, 1);
+        const serialized = JSON.stringify(auditRows);
+        for (const forbidden of [
+          auditInputMarker,
+          auditArgumentMarker,
+          auditOutputMarker,
+          secret,
+        ]) {
+          assert(!serialized.includes(forbidden));
+        }
+        for (const row of auditRows.filter((item) => item.resource_type === 'tool_call')) {
+          assert(!('arguments' in row.metadata));
+          assert(!('content' in row.metadata));
+        }
+        const response = await request('GET', `${base}/audit-records?limit=100&offset=0`);
+        assert.equal(response.statusCode, 200);
+        assert(response.json().records.some((record) => record.metadata.runId === accepted.runId));
+        assert.equal(
+          (await request('GET', `${base}/audit-records`, undefined, otherCookie)).statusCode,
+          403,
+        );
+        assert.deepEqual(
+          (
+            await request(
+              'GET',
+              `/api/v1/workspaces/${otherWorkspaceId}/audit-records`,
+              undefined,
+              cookie,
+            )
+          ).json().records,
+          [],
+        );
+      });
+
+      await t.test('Jev route audit excludes unrecognized routing fields', async () => {
+        const accepted = await submit('route audit');
+        const claimed = await claimRun(database, randomUUID());
+        assert.equal(
+          await recordModelRoute(database, claimed.id, claimed.leaseToken, modelId, {
+            router: 'jev',
+            routerModel: 'jev-latest',
+            selectedCandidateId: modelId,
+            confidence: 0.92,
+            probabilities: { [modelId]: 0.92 },
+            candidates: [{ id: modelId, provider: 'deepseek', model: 'fixture-model' }],
+            prompt: routePromptMarker,
+          }),
+          true,
+        );
+        await finishRun(database, claimed.id, claimed.leaseToken, { status: 'cancelled' });
+        const auditRows = (
+          await database.pool.query(
+            "SELECT action,metadata FROM audit_records WHERE action='model_routing.completed' AND metadata->>'runId'=$1",
+            [accepted.runId],
+          )
+        ).rows;
+        assert.equal(auditRows.length, 1);
+        assert.equal(auditRows[0].metadata.router, 'jev');
+        assert(!JSON.stringify(auditRows).includes(routePromptMarker));
+        const runDetail = await detail(accepted.runId);
+        const routed = runDetail.events.find((event) => event.type === 'model.routed');
+        assert(routed);
+        assert(!JSON.stringify(routed).includes(routePromptMarker));
+      });
 
       await t.test(
         'session serializes concurrent submissions; competing workers claim once',

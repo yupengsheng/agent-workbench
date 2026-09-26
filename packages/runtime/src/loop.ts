@@ -25,7 +25,7 @@ export interface AgentLoopLimits {
 }
 
 export interface AgentLoopEvent {
-  type: 'model.started' | 'model.completed' | 'tool.started' | 'tool.completed';
+  type: 'model.started' | 'model.completed' | 'model.failed' | 'tool.started' | 'tool.completed';
   round: number;
   call?: ToolCall;
   toolResult?: LoopToolResult;
@@ -108,19 +108,25 @@ export async function executeAgentLoop(
   for (let round = 1; round <= maxRounds; round += 1) {
     assertNotAborted(options.signal);
     await options.onEvent?.({ type: 'model.started', round });
-    const response = await model.complete({
-      ...(options.model ? { model: options.model } : {}),
-      messages,
-      tools: options.tools,
-      ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
-      ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
+    let response: ModelResponse;
+    try {
+      response = await model.complete({
+        ...(options.model ? { model: options.model } : {}),
+        messages,
+        tools: options.tools,
+        ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+        ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    } catch (error) {
+      await options.onEvent?.({ type: 'model.failed', round });
+      throw error;
+    }
     usage = addUsage(usage, response.usage);
+    await options.onEvent?.({ type: 'model.completed', round, response });
     if ((usage.totalTokens ?? 0) > maxTotalTokens)
       throw new AgentLoopError('模型累计 Token 超过本次运行上限', 'max_tokens');
     messages.push(response.message);
-    await options.onEvent?.({ type: 'model.completed', round, response });
     const calls = response.message.toolCalls ?? [];
     if (calls.length === 0) {
       if (!response.message.content?.trim())

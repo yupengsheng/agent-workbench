@@ -19,6 +19,7 @@ import {
   getSessions,
 } from './lib/api';
 import ModelConnectionsPanel from './features/admin/ModelConnectionsPanel.vue';
+import AuditRecordsPanel from './features/admin/AuditRecordsPanel.vue';
 import ChatPanel from './features/user/ChatPanel.vue';
 import WorkbenchShell from './features/layout/WorkbenchShell.vue';
 import RunInspector from './features/layout/RunInspector.vue';
@@ -44,6 +45,7 @@ const password = ref('');
 const loginPending = ref(false);
 const logoutPending = ref(false);
 const chatResetKey = ref(0);
+const auditRefreshKey = ref(0);
 const inspector = ref({
   pending: false,
   runState: '',
@@ -210,6 +212,11 @@ async function refreshSessions(sessionId?: string) {
   }
 }
 
+async function refreshAdminData() {
+  await loadWorkspaceData(selectedWorkspaceId.value);
+  auditRefreshKey.value += 1;
+}
+
 async function selectWorkspace(workspaceId = selectedWorkspaceId.value) {
   selectedWorkspaceId.value = workspaceId;
   window.sessionStorage.setItem(
@@ -331,7 +338,12 @@ onMounted(async () => {
             :workspace-id="selectedWorkspaceId"
             :models="models"
             :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
-            @changed="loadWorkspaceData(selectedWorkspaceId)"
+            @changed="refreshAdminData"
+          />
+          <AuditRecordsPanel
+            :workspace-id="selectedWorkspaceId"
+            :can-manage="selectedWorkspace?.role === 'owner' || selectedWorkspace?.role === 'admin'"
+            :refresh-key="auditRefreshKey"
           />
         </template>
         <template v-else>

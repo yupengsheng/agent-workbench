@@ -135,6 +135,7 @@ test('approved file changes require the original hash and replace atomically', a
 
 test('TAO loop observes tool output and stops on a final model answer', async () => {
   const calls = [];
+  const events = [];
   let round = 0;
   const model = {
     provider: 'fixture',
@@ -180,11 +181,46 @@ test('TAO loop observes tool output and stops on a final model answer', async ()
         return { status: 'success', content: '{"content":"hello"}' };
       },
     },
+    onEvent(event) {
+      events.push(event.type);
+    },
   });
   assert.equal(result.message.content, '已读取文件');
   assert.equal(result.toolCalls, 1);
   assert.equal(result.usage.totalTokens, 5);
   assert.equal(calls.length, 2);
+  assert.deepEqual(events, [
+    'model.started',
+    'model.completed',
+    'tool.started',
+    'tool.completed',
+    'model.started',
+    'model.completed',
+  ]);
+});
+
+test('TAO loop emits a terminal model event when the provider fails', async () => {
+  const events = [];
+  await assert.rejects(
+    executeAgentLoop(
+      {
+        provider: 'fixture',
+        async complete() {
+          throw new Error('provider failed with sensitive response');
+        },
+      },
+      [{ role: 'user', content: 'do not retain this prompt' }],
+      {
+        tools: [],
+        executor: { execute: async () => ({ status: 'success', content: '{}' }) },
+        onEvent(event) {
+          events.push(event.type);
+        },
+      },
+    ),
+    /provider failed/,
+  );
+  assert.deepEqual(events, ['model.started', 'model.failed']);
 });
 
 test('TAO loop enforces round budget', async () => {

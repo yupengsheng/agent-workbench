@@ -19,6 +19,32 @@ import {
 type Transaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 type RunRow = typeof runs.$inferSelect;
 type EventInput = { type: string; stepId?: string; payload?: Record<string, unknown> };
+type ModelCallAuditInput =
+  | {
+      phase: 'started';
+      round: number;
+      provider: string;
+      model: string;
+    }
+  | {
+      phase: 'completed';
+      round: number;
+      provider: string;
+      model: string;
+      finishReason: string | null;
+      usage: {
+        promptTokens?: number;
+        completionTokens?: number;
+        totalTokens?: number;
+      };
+    }
+  | {
+      phase: 'failed' | 'cancelled';
+      round: number;
+      provider: string;
+      model: string;
+      errorCode: string;
+    };
 export type ClaimedRun = RunRow & { leaseToken: string; deadlineAt: Date };
 export const LEASE_SECONDS = 30;
 export const RUN_TIMEOUT_MS = 60_000;
@@ -107,6 +133,19 @@ export async function startToolStep(
       })
       .returning({ id: runSteps.id });
     if (!step) return undefined;
+    await tx.insert(auditRecords).values({
+      workspaceId: run.workspaceId,
+      actorUserId: run.triggerUserId,
+      action: 'tool_call.started',
+      resourceType: 'tool_call',
+      resourceId: step.id,
+      metadata: {
+        runId,
+        stepId: step.id,
+        toolName: safeMetadataString(input.toolName),
+        toolCallId: safeMetadataString(input.toolCallId),
+      },
+    });
     await appendEvents(tx, runId, [
       { type: 'step.started', stepId: step.id, payload: { kind: 'tool', ...input } },
     ]);
@@ -183,7 +222,7 @@ export async function finishToolStep(
       .where(
         and(eq(runSteps.id, stepId), eq(runSteps.runId, runId), eq(runSteps.status, 'running')),
       )
-      .returning({ id: runSteps.id });
+      .returning({ id: runSteps.id, input: runSteps.input });
     if (!step) return false;
     if (fileChangeProposal?.changed) {
       const { content: proposedContent, ...preview } = fileChangeProposal;
@@ -239,6 +278,33 @@ export async function finishToolStep(
         { type: 'shell_command.proposed', stepId, payload: { proposalId: proposal.id, digest } },
       ]);
     }
+    const toolStatus =
+      outcome.status === 'succeeded' ? safeMetadataString(outcome.output.status) : outcome.status;
+    const errorCode =
+      outcome.status === 'failed'
+        ? outcome.code
+        : outcome.status === 'succeeded'
+          ? safeMetadataString(outcome.output.errorCode)
+          : undefined;
+    await tx.insert(auditRecords).values({
+      workspaceId: run.workspaceId,
+      actorUserId: run.triggerUserId,
+      action: `tool_call.${outcome.status === 'succeeded' ? 'completed' : outcome.status}`,
+      resourceType: 'tool_call',
+      resourceId: step.id,
+      metadata: {
+        runId,
+        stepId: step.id,
+        toolName: safeMetadataString(step.input.toolName),
+        toolCallId: safeMetadataString(step.input.toolCallId),
+        stepStatus: outcome.status,
+        ...(toolStatus ? { toolStatus } : {}),
+        ...(errorCode ? { errorCode } : {}),
+        ...(outcome.status === 'succeeded' && outcome.output.truncated === true
+          ? { truncated: true }
+          : {}),
+      },
+    });
     await appendEvents(tx, runId, [
       {
         type: `step.${outcome.status}`,
@@ -306,6 +372,49 @@ function validLease(runId: string, token: string) {
   );
 }
 
+function safeMetadataString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value.slice(0, 256) : undefined;
+}
+
+function safeModelRoutePayload(payload: Record<string, unknown>) {
+  const candidates = Array.isArray(payload.candidates)
+    ? payload.candidates.flatMap((candidate) => {
+        if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate))
+          return [];
+        const item = candidate as Record<string, unknown>;
+        const id = safeMetadataString(item.id);
+        const provider = safeMetadataString(item.provider);
+        const model = safeMetadataString(item.model);
+        return id && provider && model ? [{ id, provider, model }] : [];
+      })
+    : [];
+  const probabilities =
+    typeof payload.probabilities === 'object' &&
+    payload.probabilities !== null &&
+    !Array.isArray(payload.probabilities)
+      ? Object.fromEntries(
+          Object.entries(payload.probabilities).flatMap(([key, value]) =>
+            candidates.some((candidate) => candidate.id === key) &&
+            typeof value === 'number' &&
+            Number.isFinite(value)
+              ? [[key.slice(0, 256), value]]
+              : [],
+          ),
+        )
+      : {};
+  return {
+    router: safeMetadataString(payload.router),
+    routerModel: safeMetadataString(payload.routerModel),
+    selectedCandidateId: safeMetadataString(payload.selectedCandidateId),
+    confidence:
+      typeof payload.confidence === 'number' && Number.isFinite(payload.confidence)
+        ? payload.confidence
+        : undefined,
+    probabilities,
+    candidates,
+  };
+}
+
 export async function renewLease(database: DatabaseHandle, runId: string, token: string) {
   const [row] = await database.db
     .update(runs)
@@ -333,7 +442,58 @@ export async function recordModelRoute(
       .update(runs)
       .set({ modelConnectionId, updatedAt: sql`now()` })
       .where(eq(runs.id, runId));
-    await appendEvents(tx, runId, [{ type: 'model.routed', payload }]);
+    const safePayload = safeModelRoutePayload(payload);
+    await tx.insert(auditRecords).values({
+      workspaceId: run.workspaceId,
+      actorUserId: run.triggerUserId,
+      action: 'model_routing.completed',
+      resourceType: 'model_routing',
+      resourceId: run.id,
+      metadata: { runId, modelConnectionId, ...safePayload },
+    });
+    await appendEvents(tx, runId, [{ type: 'model.routed', payload: safePayload }]);
+    return true;
+  });
+}
+
+/** Record one model request lifecycle edge without retaining prompts or model output. */
+export async function recordModelCallAudit(
+  database: DatabaseHandle,
+  runId: string,
+  token: string,
+  input: ModelCallAuditInput,
+) {
+  return database.db.transaction(async (tx) => {
+    const [run] = await tx.select().from(runs).where(validLease(runId, token)).for('update');
+    if (!run) return false;
+    const usage =
+      input.phase === 'completed'
+        ? Object.fromEntries(
+            Object.entries(input.usage).filter(
+              (entry): entry is [string, number] =>
+                typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0,
+            ),
+          )
+        : undefined;
+    await tx.insert(auditRecords).values({
+      workspaceId: run.workspaceId,
+      actorUserId: run.triggerUserId,
+      action: `model_call.${input.phase}`,
+      resourceType: 'model_call',
+      resourceId: run.id,
+      metadata: {
+        runId,
+        round: input.round,
+        provider: safeMetadataString(input.provider),
+        model: safeMetadataString(input.model),
+        ...(input.phase === 'completed'
+          ? { finishReason: safeMetadataString(input.finishReason), usage }
+          : {}),
+        ...(input.phase === 'failed' || input.phase === 'cancelled'
+          ? { errorCode: safeMetadataString(input.errorCode) }
+          : {}),
+      },
+    });
     return true;
   });
 }

@@ -1,5 +1,6 @@
 import type {
   AgentListResponse,
+  AuditRecordListResponse,
   AuthResponse,
   FileChangeSummary,
   ChatRequest,
@@ -123,6 +124,17 @@ export function testModelConnection(
 export function getAgents(workspaceId: string): Promise<AgentListResponse> {
   return readJson<AgentListResponse>(
     `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/agents`,
+  );
+}
+
+export function getAuditRecords(
+  workspaceId: string,
+  limit = 30,
+  offset = 0,
+): Promise<AuditRecordListResponse> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return readJson<AuditRecordListResponse>(
+    `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/audit-records?${query}`,
   );
 }
 

@@ -16,6 +16,7 @@ import {
   createReadOnlyToolRegistry,
   executeSandboxedShell,
   resolveSandboxWorkspace,
+  type ToolExecutionResult,
 } from '@agent-workbench/tools';
 import type { DatabaseHandle } from '@agent-workbench/persistence/client';
 import {
@@ -31,6 +32,7 @@ import {
   recoverExpiredRuns,
   renewLease,
   finishToolStep,
+  recordModelCallAudit,
   recordModelRoute,
   startToolStep,
   type ClaimedRun,
@@ -451,14 +453,37 @@ export async function executeRun(
               stop('lease_lost');
               throw new Error('runner lease lost while starting tool step');
             }
-            const observation = await toolRegistry.execute(
-              call.function.name,
-              call.function.arguments,
-              {
-                workspaceId: run.workspaceId,
-                ...(signal ? { signal } : {}),
-              },
-            );
+            let observation: ToolExecutionResult;
+            try {
+              observation = await toolRegistry.execute(
+                call.function.name,
+                call.function.arguments,
+                {
+                  workspaceId: run.workspaceId,
+                  ...(signal ? { signal } : {}),
+                },
+              );
+            } catch (error) {
+              const cancelled = signal?.aborted === true;
+              const recorded = await finishToolStep(
+                database,
+                run.id,
+                run.leaseToken,
+                stepId,
+                cancelled
+                  ? { status: 'cancelled' }
+                  : {
+                      status: 'failed',
+                      code: 'tool_execution_failed',
+                      message: '工具执行失败',
+                    },
+              );
+              if (!recorded) {
+                stop('lease_lost');
+                throw new Error('runner lease lost while recording failed tool step');
+              }
+              throw error;
+            }
             const recorded = await finishToolStep(
               database,
               run.id,
@@ -488,6 +513,40 @@ export async function executeRun(
             }
             return observation;
           },
+        },
+        onEvent: async (event) => {
+          if (!event.type.startsWith('model.')) return;
+          const identity = {
+            round: event.round,
+            provider: event.response?.provider ?? connection.provider,
+            model: event.response?.model ?? connection.modelIdentifier,
+          };
+          let recorded: boolean;
+          if (event.type === 'model.started') {
+            recorded = await recordModelCallAudit(database, run.id, run.leaseToken, {
+              phase: 'started',
+              ...identity,
+            });
+          } else if (event.type === 'model.completed' && event.response) {
+            recorded = await recordModelCallAudit(database, run.id, run.leaseToken, {
+              phase: 'completed',
+              ...identity,
+              finishReason: event.response.finishReason,
+              usage: event.response.usage,
+            });
+          } else {
+            recorded = await recordModelCallAudit(database, run.id, run.leaseToken, {
+              phase: controller.signal.aborted ? 'cancelled' : 'failed',
+              ...identity,
+              errorCode: controller.signal.aborted
+                ? (stopReason ?? 'cancelled')
+                : 'model_request_failed',
+            });
+          }
+          if (!recorded) {
+            stop('lease_lost');
+            throw new Error('runner lease lost while recording model call audit');
+          }
         },
         maxRounds: 8,
         maxToolCalls: 16,

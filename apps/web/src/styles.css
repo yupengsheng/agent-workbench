@@ -1294,6 +1294,7 @@ body {
 
 .mao-main-column > .chat-panel,
 .mao-main-column > .model-console,
+.mao-main-column > .audit-console,
 .mao-main-column > .mao-stat-strip,
 .mao-main-column > .mao-page-error {
   width: min(900px, 100%);
@@ -1444,6 +1445,112 @@ body {
   border-radius: 12px;
   background: var(--mao-surface);
   box-shadow: 0 8px 28px rgba(29, 29, 31, 0.035);
+}
+
+.mao-main-column .audit-console {
+  margin-top: 14px;
+  padding: 22px;
+  border-color: var(--mao-border);
+  border-radius: 12px;
+  background: var(--mao-surface);
+  box-shadow: 0 8px 28px rgba(29, 29, 31, 0.035);
+}
+
+.audit-refresh-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--mao-muted);
+  border-color: var(--mao-border);
+  border-radius: 7px;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.audit-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 58px;
+  padding: 10px 0;
+  border-top: 1px solid var(--mao-divider);
+}
+
+.audit-state {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mao-primary);
+}
+
+.audit-state.completed,
+.audit-state.succeeded,
+.audit-state.applied,
+.audit-state.approved,
+.audit-state.published,
+.audit-state.created,
+.audit-state.updated,
+.audit-state.tested {
+  background: var(--mao-success);
+}
+
+.audit-state.failed,
+.audit-state.rejected,
+.audit-state.unknown,
+.audit-state.apply_unknown,
+.audit-state.apply_failed {
+  background: var(--mao-danger);
+}
+
+.audit-state.cancelled,
+.audit-state.expired {
+  background: var(--mao-muted);
+}
+
+.audit-copy,
+.audit-meta {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.audit-copy strong {
+  color: var(--mao-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.audit-copy small,
+.audit-meta {
+  color: var(--mao-muted);
+  font-size: 10px;
+}
+
+.audit-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-meta {
+  justify-items: end;
+  white-space: nowrap;
+}
+
+.audit-load-more {
+  display: block;
+  margin: 13px auto 0;
+  padding: 7px 12px;
+  border-color: var(--mao-border);
+  color: var(--mao-muted);
+  font-size: 11px;
 }
 
 .mao-main-column .model-console .compact-primary {
